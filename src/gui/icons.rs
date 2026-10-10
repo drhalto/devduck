@@ -164,16 +164,3 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
     }
 }
-
-/// The Dev Ports mark: a tile with three coloured rows (dev, docker, app).
-pub fn logo(p: &Painter, rect: Rect) {
-    use super::theme::*;
-    p.rect_filled(rect, rect.width() * 0.26, SURFACE_2);
-    let h = rect.height();
-    for (i, c) in [GREEN, CYAN, TEXT].into_iter().enumerate() {
-        let y = rect.top() + h * (0.31 + 0.19 * i as f32);
-        let t = h * 0.065;
-        p.rect_filled(Rect::from_min_max(pos2(rect.left() + h * 0.20, y - t), pos2(rect.left() + h * 0.33, y + t)), t, c);
-        p.rect_filled(Rect::from_min_max(pos2(rect.left() + h * 0.41, y - t), pos2(rect.left() + h * 0.80, y + t)), t, c);
-    }
-}

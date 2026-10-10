@@ -31,7 +31,7 @@ pub fn kill_tree(pid: u32) -> Result<(), String> {
         return Ok(());
     }
     let text = format!("{}\n{}", String::from_utf8_lossy(&out.stderr).trim(), String::from_utf8_lossy(&out.stdout).trim());
-    Err(format!("taskkill failed:\n{}\n\nTry running Dev Ports as administrator.", text.trim()))
+    Err(format!("taskkill failed:\n{}\n\nTry running DevDuck as administrator.", text.trim()))
 }
 
 pub fn docker(args: &[&str]) -> Result<String, String> {
@@ -79,7 +79,7 @@ pub fn log_path(app: &str) -> PathBuf {
 }
 
 /// Re-run a dev server's root command in its working directory, detached and windowless,
-/// with stdout and stderr going to a log file Dev Ports can tail. Returns the new pid.
+/// with stdout and stderr going to a log file DevDuck can tail. Returns the new pid.
 pub fn start(app: &str, command: &str, cwd: &str) -> Result<(u32, PathBuf), String> {
     let (program, args) = split_command(command).ok_or("No command recorded for this project.")?;
     if !Path::new(cwd).is_dir() {
@@ -90,7 +90,7 @@ pub fn start(app: &str, command: &str, cwd: &str) -> Result<(u32, PathBuf), Stri
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let mut file = File::create(&log).map_err(|e| format!("Couldn't create {}: {e}", log.display()))?;
-    let _ = writeln!(file, "[dev ports] {} in {cwd}\n[dev ports] {command}\n", win::local_clock());
+    let _ = writeln!(file, "[devduck] {} in {cwd}\n[devduck] {command}\n", win::local_clock());
     drop(file);
     let out = OpenOptions::new().append(true).open(&log).map_err(|e| e.to_string())?;
     let err = out.try_clone().map_err(|e| e.to_string())?;

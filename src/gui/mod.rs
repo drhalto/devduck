@@ -23,10 +23,10 @@ use crate::store::{self, Favorite, FavoriteKind, Recent, State, ViewMode};
 use crate::{icon, launch, win};
 
 pub fn run(demo: bool) -> eframe::Result {
-    let icon = egui::IconData { rgba: icon::rgba(64), width: 64, height: 64 };
-    let shot = std::env::var_os("DEVPORTS_SHOT").is_some();
+    let icon = egui::IconData { rgba: icon::ICON_64.to_vec(), width: 64, height: 64 };
+    let shot = std::env::var_os("DEVDUCK_SHOT").is_some();
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("Dev Ports")
+        .with_title("DevDuck")
         .with_inner_size([1180.0, 760.0])
         .with_min_inner_size([760.0, 480.0])
         .with_icon(Arc::new(icon));
@@ -35,7 +35,7 @@ pub fn run(demo: bool) -> eframe::Result {
         viewport = viewport.with_position([-6000.0, 120.0]).with_active(false).with_taskbar(false);
     }
     let options = eframe::NativeOptions { viewport, centered: !shot, ..Default::default() };
-    eframe::run_native("Dev Ports", options, Box::new(move |cc| Ok(Box::new(DevPorts::new(cc, demo)))))
+    eframe::run_native("DevDuck", options, Box::new(move |cc| Ok(Box::new(DevDuck::new(cc, demo)))))
 }
 
 const HISTORY: usize = 60;
@@ -148,8 +148,8 @@ pub(crate) struct LogView {
 }
 
 /// Developer hook for README screenshots and visual checks that never touch the real
-/// desktop: with DEVPORTS_SHOT=<file.bmp> the window opens off-screen and unfocused,
-/// applies DEVPORTS_UI ("select=<app>;view=list;chip=docker;search=x;dialog=settings|stop;
+/// desktop: with DEVDUCK_SHOT=<file.bmp> the window opens off-screen and unfocused,
+/// applies DEVDUCK_UI ("select=<app>;view=list;chip=docker;search=x;dialog=settings|stop;
 /// act=restart|stop|start|favorite|startfav:<app>;delay=<ms>"), saves one frame as a BMP and exits.
 struct ShotHook {
     path: String,
@@ -162,10 +162,11 @@ struct ShotHook {
     drawer_scroll: Option<f32>,
 }
 
-pub(crate) struct DevPorts {
+pub(crate) struct DevDuck {
     demo: bool,
     shot: Option<ShotHook>,
     ctx: egui::Context,
+    logo: egui::TextureHandle,
     state: State,
     state_dirty_since: Option<Instant>,
     rows: Vec<PortApp>,
@@ -193,7 +194,7 @@ pub(crate) struct DevPorts {
     worker: Sender<WorkerCmd>,
 }
 
-impl DevPorts {
+impl DevDuck {
     fn new(cc: &eframe::CreationContext<'_>, demo: bool) -> Self {
         theme::install_fonts(&cc.egui_ctx);
         theme::install_style(&cc.egui_ctx);
@@ -202,7 +203,7 @@ impl DevPorts {
         let (tx, rx) = channel();
         let worker = spawn_worker(demo, tx.clone(), cc.egui_ctx.clone(), state.settings.interval_secs);
         let last_interval = if state.settings.interval_secs == 0 { 2 } else { state.settings.interval_secs };
-        let shot = std::env::var("DEVPORTS_SHOT").ok().map(|path| ShotHook {
+        let shot = std::env::var("DEVDUCK_SHOT").ok().map(|path| ShotHook {
             path,
             started: Instant::now(),
             delay: Duration::from_millis(2500),
@@ -212,10 +213,15 @@ impl DevPorts {
             act: None,
             drawer_scroll: None,
         });
-        let mut app = DevPorts {
+        let mut app = DevDuck {
             demo,
             shot,
             ctx: cc.egui_ctx.clone(),
+            logo: cc.egui_ctx.load_texture(
+                "devduck-logo",
+                egui::ColorImage::from_rgba_unmultiplied([96, 96], icon::LOGO_96),
+                egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR },
+            ),
             state,
             state_dirty_since: None,
             rows: Vec::new(),
@@ -243,7 +249,7 @@ impl DevPorts {
             worker,
         };
         if app.shot.is_some() {
-            app.apply_demo_ui(&std::env::var("DEVPORTS_UI").unwrap_or_default());
+            app.apply_demo_ui(&std::env::var("DEVDUCK_UI").unwrap_or_default());
         }
         app
     }
@@ -656,9 +662,9 @@ impl DevPorts {
             });
         } else if let Some(path) = self.launched_log(&r) {
             let text = launch::tail(std::path::Path::new(&path), 48 * 1024).unwrap_or_default();
-            self.logs = Some(LogView { key, text, fetched: Instant::now(), source: "started by Dev Ports", path: Some(path) });
+            self.logs = Some(LogView { key, text, fetched: Instant::now(), source: "started by DevDuck", path: Some(path) });
         } else if self.demo && r.kind == Kind::Dev {
-            self.logs = Some(LogView { key, text: DEMO_DEV_LOG.into(), fetched: Instant::now(), source: "started by Dev Ports", path: None });
+            self.logs = Some(LogView { key, text: DEMO_DEV_LOG.into(), fetched: Instant::now(), source: "started by DevDuck", path: None });
         } else {
             self.logs = None;
         }
@@ -897,7 +903,7 @@ impl DevPorts {
         let Some((command, cwd)) = self.relaunch_spec(&r) else {
             self.dialog = Some(Dialog::Error(
                 format!("Can't restart {}", r.app),
-                "Dev Ports couldn't read this server's command line (it may be running as another user), so it doesn't know how to start it again.".into(),
+                "DevDuck couldn't read this server's command line (it may be running as another user), so it doesn't know how to start it again.".into(),
             ));
             return;
         };
@@ -978,7 +984,7 @@ impl DevPorts {
             return;
         }
         if command.is_empty() {
-            self.dialog = Some(Dialog::Error(format!("Can't start {app}"), "Dev Ports never saw this project's command line, so it doesn't know how to start it. Run it once as usual and it will remember.".into()));
+            self.dialog = Some(Dialog::Error(format!("Can't start {app}"), "DevDuck never saw this project's command line, so it doesn't know how to start it. Run it once as usual and it will remember.".into()));
             return;
         }
         self.busy.insert(busy_key.clone(), "Starting");
@@ -1000,7 +1006,7 @@ impl DevPorts {
     }
 }
 
-impl eframe::App for DevPorts {
+impl eframe::App for DevDuck {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if !self.titlebar_styled {
             self.titlebar_styled = win::style_title_bar(theme::rgb(theme::BG), theme::rgb(theme::TEXT_2), theme::rgb(theme::BORDER));
@@ -1152,5 +1158,5 @@ fn demo_probe(r: &PortApp, port: u16) -> Probe {
     }
 }
 
-const DEMO_DEV_LOG: &str = "[dev ports] 14:02:11 in C:\\Users\\dev\\acme-storefront\n[dev ports] npm run dev\n\n> acme-storefront@0.4.0 dev\n> next dev --turbopack\n\n   \u{25B2} Next.js 16.0.1 (Turbopack)\n   - Local:        http://localhost:3000\n   - Network:      http://192.168.1.24:3000\n\n \u{2713} Starting...\n \u{2713} Ready in 1180ms\n \u{25CB} Compiling / ...\n GET / 200 in 2.1s\n GET /products/linen-shirt 200 in 412ms\n GET /api/cart 200 in 38ms\n";
+const DEMO_DEV_LOG: &str = "[devduck] 14:02:11 in C:\\Users\\dev\\acme-storefront\n[devduck] npm run dev\n\n> acme-storefront@0.4.0 dev\n> next dev --turbopack\n\n   \u{25B2} Next.js 16.0.1 (Turbopack)\n   - Local:        http://localhost:3000\n   - Network:      http://192.168.1.24:3000\n\n \u{2713} Starting...\n \u{2713} Ready in 1180ms\n \u{25CB} Compiling / ...\n GET / 200 in 2.1s\n GET /products/linen-shirt 200 in 412ms\n GET /api/cart 200 in 38ms\n";
 const DEMO_DOCKER_LOG: &str = "PostgreSQL init process complete; ready for start up.\n\n2026-10-04 09:12:01.233 UTC [1] LOG:  starting PostgreSQL 16.4 on x86_64-pc-linux-gnu\n2026-10-04 09:12:01.234 UTC [1] LOG:  listening on IPv4 address \"0.0.0.0\", port 5432\n2026-10-04 09:12:01.240 UTC [1] LOG:  database system is ready to accept connections\n";

@@ -1,4 +1,4 @@
-//! Settings and "recently stopped" projects, persisted to %APPDATA%\DevPorts\state.json.
+//! Settings, favorites and "recently stopped" projects, persisted to %APPDATA%\DevDuck\state.json.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -69,7 +69,7 @@ impl Favorite {
     }
 }
 
-/// A dev project Dev Ports has seen running, kept so it can be started again.
+/// A dev project DevDuck has seen running, kept so it can be started again.
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 #[serde(default)]
 pub struct Recent {
@@ -82,7 +82,7 @@ pub struct Recent {
     pub cwd: Option<String>,
     /// Unix seconds.
     pub last_seen: u64,
-    /// Set when Dev Ports itself started it: the pid and where its output goes.
+    /// Set when DevDuck itself started it: the pid and where its output goes.
     pub launched_pid: Option<u32>,
     pub log: Option<String>,
 }
@@ -101,7 +101,16 @@ pub fn now_unix() -> u64 {
 
 pub fn data_dir() -> PathBuf {
     let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("DevPorts")
+    base.join("DevDuck")
+}
+
+/// DevDuck was called Dev Ports until v2.1: move its old data folder over once.
+fn migrate_old_data_dir() {
+    let Some(base) = std::env::var_os("APPDATA").map(PathBuf::from) else { return };
+    let (old, new) = (base.join("DevPorts"), base.join("DevDuck"));
+    if old.is_dir() && !new.exists() {
+        let _ = std::fs::rename(&old, &new);
+    }
 }
 
 fn state_path() -> PathBuf {
@@ -110,7 +119,15 @@ fn state_path() -> PathBuf {
 
 impl State {
     pub fn load() -> State {
-        std::fs::read_to_string(state_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        migrate_old_data_dir();
+        let mut state: State = std::fs::read_to_string(state_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        // Log paths recorded before the rename point into the old folder.
+        for r in &mut state.recent {
+            if let Some(log) = &mut r.log {
+                *log = log.replace("\\DevPorts\\logs\\", "\\DevDuck\\logs\\");
+            }
+        }
+        state
     }
 
     pub fn save(&self) {

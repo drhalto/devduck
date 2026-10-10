@@ -10,7 +10,7 @@ use eframe::egui::{
 use super::icons::{self, Icon};
 use super::theme::*;
 use super::widgets::{self, Tone};
-use super::{Action, Chip, DevPorts, Dialog, Health};
+use super::{Action, Chip, DevDuck, Dialog, Health};
 use crate::launch;
 use crate::probe::Probe;
 use crate::scan::{Exposure, Kind, PortApp, PortInfo};
@@ -77,7 +77,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-impl DevPorts {
+impl DevDuck {
     fn matches(&self, r: &PortApp, needle: &str) -> bool {
         needle.is_empty()
             || [&r.app, &r.ports_text, &r.process, &r.folder].iter().any(|f| f.to_lowercase().contains(needle))
@@ -220,8 +220,8 @@ impl DevPorts {
                         actions.push(Action::ToggleSidebar);
                     }
                     let lx = open.right() + 12.0;
-                    icons::logo(&p, Rect::from_min_size(pos2(lx, r1.center().y - 13.0), vec2(26.0, 26.0)));
-                    p.text(pos2(lx + 38.0, r1.center().y), Align2::LEFT_CENTER, "Dev Ports", semibold(17.0), TEXT).right()
+                    self.paint_logo(&p, Rect::from_min_size(pos2(lx, r1.center().y - 13.0), vec2(26.0, 26.0)));
+                    p.text(pos2(lx + 38.0, r1.center().y), Align2::LEFT_CENTER, "DevDuck", semibold(17.0), TEXT).right()
                 };
 
                 let mut x = r1.right();
@@ -282,6 +282,10 @@ impl DevPorts {
             });
     }
 
+    fn paint_logo(&self, p: &egui::Painter, rect: Rect) {
+        p.image(self.logo.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+    }
+
     /// The kind filters: (chip, icon, short label, count).
     fn views(&self) -> [(Chip, Icon, &'static str, usize); 5] {
         let count = |k: Kind| self.rows.iter().filter(|r| r.kind == k).count();
@@ -308,8 +312,8 @@ impl DevPorts {
         ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
         let (top, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
         let p = ui.painter().clone();
-        icons::logo(&p, Rect::from_min_size(pos2(top.left() + 4.0, top.center().y - 12.0), vec2(24.0, 24.0)));
-        p.text(pos2(top.left() + 38.0, top.center().y), Align2::LEFT_CENTER, "Dev Ports", semibold(16.0), TEXT);
+        self.paint_logo(&p, Rect::from_min_size(pos2(top.left() + 2.0, top.center().y - 14.0), vec2(28.0, 28.0)));
+        p.text(pos2(top.left() + 38.0, top.center().y), Align2::LEFT_CENTER, "DevDuck", semibold(16.0), TEXT);
         let hide = Rect::from_min_size(pos2(top.right() - 32.0, top.center().y - 16.0), vec2(32.0, 32.0));
         if widgets::icon_button(ui, Id::new("hide-sidebar"), hide, Icon::Sidebar, "Hide sidebar (Ctrl B)", false, true).clicked() {
             actions.push(Action::ToggleSidebar);
@@ -456,7 +460,7 @@ impl DevPorts {
         let tip = match (running, f.kind) {
             (Some(_), _) => "Click for details \u{00B7} right-click for more".to_string(),
             (None, FavoriteKind::Container) => "Stopped \u{2014} \u{25B6} runs docker start".to_string(),
-            (None, FavoriteKind::Project) if f.command.is_empty() => "Stopped \u{2014} Dev Ports hasn't seen its command yet".to_string(),
+            (None, FavoriteKind::Project) if f.command.is_empty() => "Stopped \u{2014} DevDuck hasn't seen its command yet".to_string(),
             (None, FavoriteKind::Project) => format!("Stopped \u{2014} \u{25B6} runs {}", f.command),
         };
         let resp = resp.on_hover_text(tip);
@@ -1037,7 +1041,7 @@ impl DevPorts {
             widgets::text(&p, pos2(x, cy), Align2::LEFT_CENTER, &info, sans(12.5), TEXT_3, info_right - x);
         }
         let can_start = !e.command.is_empty() && !busy;
-        let tip = if e.command.is_empty() { "Dev Ports never saw this project's command line".to_string() } else { format!("Runs: {}", e.command) };
+        let tip = if e.command.is_empty() { "DevDuck never saw this project's command line".to_string() } else { format!("Runs: {}", e.command) };
         let resp = widgets::button_at(ui, start, Id::new(("start", &e.folder)), Some(Icon::Play), start_label, Tone::Primary, can_start).on_hover_text(tip);
         if resp.clicked() {
             actions.push(Action::Start(e.folder.clone()));
@@ -1336,7 +1340,7 @@ impl DevPorts {
                 }
                 None if r.kind == Kind::Dev => {
                     ui.label(
-                        RichText::new("This server was started outside Dev Ports, so its output isn't visible here. Restart it from Dev Ports to capture its logs.")
+                        RichText::new("This server was started outside DevDuck, so its output isn't visible here. Restart it from DevDuck to capture its logs.")
                             .font(sans(12.5))
                             .color(TEXT_3),
                     );
@@ -1465,7 +1469,7 @@ impl DevPorts {
                         });
                     });
                     ui.add_space(4.0);
-                    ui.label(RichText::new(concat!("Dev Ports ", env!("CARGO_PKG_VERSION"))).font(sans(11.5)).color(TEXT_3));
+                    ui.label(RichText::new(concat!("DevDuck ", env!("CARGO_PKG_VERSION"))).font(sans(11.5)).color(TEXT_3));
                 }
             }
         });

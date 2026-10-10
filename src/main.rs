@@ -1,9 +1,9 @@
-// devports - the command-line side of Dev Ports. A console app, so shells wait for it
-// and get its exit code; run with no arguments it opens the window (devports-app.exe).
+// devduck - the command-line side of DevDuck. A console app, so shells wait for it
+// and get its exit code; run with no arguments it opens the window (devduck-app.exe).
 
 use std::os::windows::process::CommandExt;
 
-use dev_ports::cli;
+use devduck::cli;
 
 fn main() {
     // Accept --smoke, -Smoke and /smoke alike (the PowerShell version used -Smoke).
@@ -35,13 +35,13 @@ fn main() {
     std::process::exit(code);
 }
 
-/// Hand off to devports-app.exe (kept beside this exe) so the terminal gets its prompt
+/// Hand off to devduck-app.exe (kept beside this exe) so the terminal gets its prompt
 /// back straight away. The CLI doesn't link the GUI, which keeps it small and quick.
 fn open_window(demo: bool) {
     const DETACHED_PROCESS: u32 = 0x0000_0008;
-    let app = std::env::current_exe().ok().map(|p| p.with_file_name("devports-app.exe"));
+    let app = std::env::current_exe().ok().map(|p| p.with_file_name("devduck-app.exe"));
     let Some(app) = app.filter(|p| p.is_file()) else {
-        eprintln!("devports-app.exe isn't next to devports.exe; run `devports --help` for the text commands.");
+        eprintln!("devduck-app.exe isn't next to devduck.exe; run `devduck --help` for the text commands.");
         std::process::exit(1);
     };
     let mut cmd = std::process::Command::new(app);
@@ -49,7 +49,7 @@ fn open_window(demo: bool) {
         cmd.arg("--demo");
     }
     if let Err(e) = cmd.creation_flags(DETACHED_PROCESS).spawn() {
-        eprintln!("Couldn't open the Dev Ports window: {e}");
+        eprintln!("Couldn't open the DevDuck window: {e}");
         std::process::exit(1);
     }
 }

@@ -1,4 +1,4 @@
-//! The handful of Win32/NT calls Dev Ports needs, declared by hand with raw-dylib
+//! The handful of Win32/NT calls DevDuck needs, declared by hand with raw-dylib
 //! (no bindings crate, no import libraries).
 //!
 //! The PowerShell version spent most of its ~1s scan in WMI (Win32_Process). Here a
@@ -380,18 +380,18 @@ pub fn style_title_bar(caption: [u8; 3], text: [u8; 3], border: [u8; 3]) -> bool
     true
 }
 
-/// Claim the "one Dev Ports window" slot. Returns false if another instance holds it.
+/// Claim the "one DevDuck window" slot. Returns false if another instance holds it.
 /// (The mutex handle is deliberately leaked: it must live as long as the process.)
 pub fn claim_single_instance() -> bool {
     const ERROR_ALREADY_EXISTS: u32 = 183;
-    let name = wide("Local\\DevPorts.App.SingleInstance");
+    let name = wide("Local\\DevDuck.App.SingleInstance");
     unsafe {
         let handle = CreateMutexW(null_mut(), 0, name.as_ptr());
         !(handle.is_null() || GetLastError() == ERROR_ALREADY_EXISTS)
     }
 }
 
-/// Bring the already-running Dev Ports window to the front (restoring it if minimized).
+/// Bring the already-running DevDuck window to the front (restoring it if minimized).
 pub fn focus_existing_window() -> bool {
     unsafe extern "system" fn find(hwnd: Handle, lparam: isize) -> i32 {
         let mut class = [0u16; 64];
@@ -399,7 +399,7 @@ pub fn focus_existing_window() -> bool {
         unsafe {
             let n = GetClassNameW(hwnd, class.as_mut_ptr(), 64) as usize;
             let t = GetWindowTextW(hwnd, title.as_mut_ptr(), 64) as usize;
-            if String::from_utf16_lossy(&class[..n]) == "Window Class" && String::from_utf16_lossy(&title[..t]) == "Dev Ports" {
+            if String::from_utf16_lossy(&class[..n]) == "Window Class" && String::from_utf16_lossy(&title[..t]) == "DevDuck" {
                 *(lparam as *mut Handle) = hwnd;
                 return 0;
             }

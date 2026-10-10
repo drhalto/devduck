@@ -718,7 +718,7 @@ impl Scanner {
     }
 }
 
-/// Made-up rows for screenshots (`devports --demo`). Nothing here is real, and the
+/// Made-up rows for screenshots (`devduck --demo`). Nothing here is real, and the
 /// GUI refuses to stop or start anything in demo mode.
 pub fn demo_rows(tick: u64) -> Vec<PortApp> {
     use std::net::{Ipv4Addr, Ipv6Addr};

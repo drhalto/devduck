@@ -31,7 +31,7 @@ pub fn probe(port: u16, addrs: &[IpAddr]) -> Probe {
     let _ = stream.set_read_timeout(Some(Duration::from_millis(2500)));
     let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
     let request = format!(
-        "GET / HTTP/1.1\r\nHost: localhost:{port}\r\nUser-Agent: DevPorts/2\r\nAccept: text/html,*/*\r\nConnection: close\r\n\r\n"
+        "GET / HTTP/1.1\r\nHost: localhost:{port}\r\nUser-Agent: DevDuck/2\r\nAccept: text/html,*/*\r\nConnection: close\r\n\r\n"
     );
     if stream.write_all(request.as_bytes()).is_err() {
         return Probe::NotHttp;

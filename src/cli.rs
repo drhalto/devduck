@@ -8,16 +8,16 @@ use crate::scan::{Kind, PortApp, Scanner};
 use crate::win;
 
 pub const HELP: &str = "\
-Dev Ports - see what's listening on your local ports, grouped by project.
+DevDuck - see what's listening on your local ports, grouped by project.
 
 Usage:
-  devports                 open the window
-  devports list            print every listener as a table (alias: --smoke)
-  devports list --json     ...as JSON (alias: --json)
-  devports who <port>      what's on a port: app, folder, process tree, command
-  devports kill <port>     stop whatever owns a port (whole process tree, or docker stop)
-  devports open <port>     open http://localhost:<port> in the browser
-  devports --demo          open the window with made-up rows (for screenshots)
+  devduck                 open the window
+  devduck list            print every listener as a table (alias: --smoke)
+  devduck list --json     ...as JSON (alias: --json)
+  devduck who <port>      what's on a port: app, folder, process tree, command
+  devduck kill <port>     stop whatever owns a port (whole process tree, or docker stop)
+  devduck open <port>     open http://localhost:<port> in the browser
+  devduck --demo          open the window with made-up rows (for screenshots)
 ";
 
 fn out(text: &str) {

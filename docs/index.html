@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevDuck — every dev server on your PC</title>
+<meta name="description" content="DevDuck is a free Windows app and CLI that shows every dev server on your PC, grouped by project, with one click to open, restart or stop the whole process tree.">
+<meta name="theme-color" content="#0D0F14">
+<meta name="color-scheme" content="dark">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="DevDuck — every dev server on your PC">
+<meta property="og:description" content="See what's on every port, grouped by project. Open, restart or stop the whole process tree. Free for Windows.">
+<meta property="og:url" content="https://drhalto.github.io/devduck/">
+<meta property="og:image" content="https://drhalto.github.io/devduck/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://drhalto.github.io/devduck/img/og.png">
+<style>
+@font-face { font-family: Geist; src: url(fonts/Geist-Regular.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: Geist; src: url(fonts/Geist-Medium.woff2) format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: Geist; src: url(fonts/Geist-SemiBold.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url(fonts/GeistMono-Regular.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url(fonts/GeistMono-Medium.woff2) format("woff2"); font-weight: 500; font-display: swap; }
+
+:root {
+  --bg: #0D0F14;
+  --rail: #11131A;
+  --surface: #14171F;
+  --surface-hi: #1A1E28;
+  --surface-2: #222734;
+  --border: #222734;
+  --border-hi: #333A4B;
+  --text: #E7EAF3;
+  --text-2: #A4ACC2;
+  --text-3: #8A93AD;
+  --green: #3DDC84;
+  --cyan: #4CC2FF;
+  --violet: #A78BFA;
+  --amber: #F5B44A;
+  --duck: #FFD60A;
+  --duck-ink: #1A1503;
+  --blue: #4C8DFF;
+  --accent: #7C9CFF;
+  --radius: 14px;
+  --sans: Geist, "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", Consolas, ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 17px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { color: #A5BBFF; }
+:focus-visible { outline: 2px solid var(--duck); outline-offset: 3px; border-radius: 6px; }
+code, pre, kbd { font-family: var(--mono); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+.skip { position: absolute; left: -999px; top: 12px; background: var(--duck); color: var(--duck-ink); padding: 8px 14px; border-radius: 8px; z-index: 10; font-weight: 600; }
+.skip:focus { left: 16px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- nav ---- */
+header.site { position: sticky; top: 0; z-index: 5; background: rgba(13, 15, 20, 0.82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.nav { display: flex; align-items: center; gap: 24px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 600; font-size: 18px; }
+.brand img { width: 32px; height: 32px; }
+.nav ul { display: flex; gap: 22px; list-style: none; margin: 0 0 0 auto; padding: 0; }
+.nav ul a { color: var(--text-2); text-decoration: none; font-size: 15px; font-weight: 500; }
+.nav ul a:hover { color: var(--text); }
+.nav .gh { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--border-hi); border-radius: 10px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 500; }
+.nav .gh:hover { background: var(--surface-hi); color: var(--text); }
+@media (max-width: 760px) { .nav ul { display: none; } .nav .gh { margin-left: auto; } }
+
+/* ---- hero ---- */
+.hero { position: relative; padding: 72px 0 40px; overflow: hidden; }
+.hero::before { content: ""; position: absolute; right: -10%; top: -20%; width: 720px; height: 720px; border-radius: 50%; background: radial-gradient(circle, rgba(76, 141, 255, 0.20), transparent 62%); pointer-events: none; }
+.hero-grid { position: relative; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 40px; align-items: center; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border: 1px solid var(--border-hi); border-radius: 999px; color: var(--text-2); font-size: 14px; font-weight: 500; background: var(--surface); }
+.eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(61, 220, 132, 0.15); }
+h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.04; letter-spacing: -0.03em; margin: 20px 0 18px; font-weight: 600; text-wrap: balance; }
+h1 .quack { color: var(--duck); }
+.lede { font-size: 20px; color: var(--text-2); max-width: 36ch; margin: 0 0 30px; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 20px; border-radius: 12px; font-weight: 600; font-size: 16px; text-decoration: none; border: 1px solid transparent; cursor: pointer; }
+.btn-primary { background: var(--duck); color: var(--duck-ink); }
+.btn-primary:hover { background: #FFE14D; color: var(--duck-ink); }
+.btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border-hi); }
+.btn-ghost:hover { background: var(--surface-hi); color: var(--text); }
+.btn svg { width: 18px; height: 18px; }
+.meta { margin-top: 22px; color: var(--text-3); font-size: 14px; }
+.meta span + span::before { content: "·"; margin: 0 10px; }
+.mascot { position: relative; justify-self: center; width: min(400px, 100%); }
+.mascot img { filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.45)); animation: bob 5s ease-in-out infinite; }
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-10px) rotate(1deg); } }
+.chip { position: absolute; font: 500 15px var(--mono); padding: 6px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border-hi); color: var(--text); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+.chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+.chip.c1 { left: -8%; top: 18%; } .chip.c1 i { background: var(--green); }
+.chip.c2 { right: -6%; top: 52%; } .chip.c2 i { background: var(--cyan); }
+.chip.c3 { left: 2%; bottom: 8%; } .chip.c3 i { background: var(--violet); }
+@media (max-width: 900px) {
+  .hero-grid { grid-template-columns: 1fr; }
+  .mascot { width: min(300px, 80%); order: -1; }
+  .chip.c1 { left: -14%; } .chip.c2 { right: -14%; }
+}
+
+/* ---- screenshot ---- */
+.shot { margin: 28px auto 0; border-radius: 16px; border: 1px solid var(--border-hi); overflow: hidden; background: var(--surface); box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5), 0 0 0 8px rgba(255, 255, 255, 0.02); }
+.shot .bar { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-bottom: 1px solid var(--border); color: var(--text-3); font-size: 13px; }
+.shot .bar img { width: 18px; height: 18px; }
+.caption { text-align: center; color: var(--text-3); font-size: 14px; margin-top: 14px; }
+
+/* ---- sections ---- */
+section { padding: 88px 0 0; }
+.kicker { color: var(--duck); font: 600 13px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 10px; }
+h2 { font-size: clamp(30px, 4vw, 42px); letter-spacing: -0.02em; line-height: 1.12; margin: 0 0 14px; font-weight: 600; text-wrap: balance; }
+.sub { color: var(--text-2); max-width: 62ch; margin: 0 0 40px; font-size: 18px; }
+
+.problem { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+.card h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.card p { margin: 0; color: var(--text-2); font-size: 16px; }
+.before pre, .after pre { margin: 14px 0 0; padding: 14px 16px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); font-size: 13.5px; line-height: 1.6; overflow-x: auto; color: var(--text-2); }
+.before .label, .after .label { font: 600 12px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; }
+.before .label { color: var(--amber); } .after .label { color: var(--green); }
+@media (max-width: 760px) { .problem { grid-template-columns: 1fr; } }
+
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.feature { position: relative; }
+.feature .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 16px; background: var(--surface-2); color: var(--text); }
+.feature .ico svg { width: 20px; height: 20px; }
+@media (max-width: 900px) { .features { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 620px) { .features { grid-template-columns: 1fr; } }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+.terminal { background: #090B0F; border: 1px solid var(--border-hi); border-radius: var(--radius); overflow: hidden; }
+.terminal .bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.terminal .bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--surface-2); }
+.terminal pre { margin: 0; padding: 18px 20px; font-size: 13.5px; line-height: 1.65; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+.terminal .p { color: var(--duck); } .terminal .h { color: var(--text); font-weight: 500; } .terminal .k { color: var(--text-3); } .terminal .g { color: var(--green); }
+
+table.cmds { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+table.cmds th { text-align: left; color: var(--text-3); font: 600 12px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; padding: 0 0 10px; }
+table.cmds td { padding: 12px 0; border-top: 1px solid var(--border); vertical-align: top; color: var(--text-2); }
+table.cmds td:first-child { padding-right: 18px; white-space: nowrap; }
+table.cmds code { color: var(--text); background: var(--surface-hi); border: 1px solid var(--border); border-radius: 7px; padding: 2px 8px; font-size: 14px; }
+
+.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; display: grid; gap: 14px; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 40px 1fr; gap: 16px; align-items: start; }
+.steps li::before { content: counter(step); width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--duck); color: var(--duck-ink); font-weight: 600; }
+.steps h3 { margin: 4px 0 6px; font-size: 18px; }
+.steps p { margin: 0 0 10px; color: var(--text-2); font-size: 16px; }
+.code { position: relative; display: flex; align-items: center; gap: 12px; background: #090B0F; border: 1px solid var(--border-hi); border-radius: 10px; padding: 12px 12px 12px 16px; font: 14px/1.5 var(--mono); color: var(--text); }
+.code code { white-space: pre; flex: 1; min-width: 0; overflow-x: auto; }
+.copy { flex: none; border: 1px solid var(--border-hi); background: var(--surface-hi); color: var(--text-2); border-radius: 8px; padding: 6px 10px; font: 500 13px var(--sans); cursor: pointer; }
+.copy:hover { color: var(--text); background: var(--surface-2); }
+
+.privacy ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.privacy li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; color: var(--text-2); }
+.privacy li svg { width: 20px; height: 20px; color: var(--green); margin-top: 3px; }
+.privacy strong { color: var(--text); font-weight: 600; }
+
+.why { display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: center; background: linear-gradient(135deg, rgba(255, 214, 10, 0.08), rgba(76, 141, 255, 0.08)); border: 1px solid var(--border-hi); border-radius: 20px; padding: 28px 32px; }
+.why img { width: 180px; }
+.why h2 { font-size: 30px; }
+.why p { color: var(--text-2); margin: 0; }
+@media (max-width: 700px) { .why { grid-template-columns: 1fr; text-align: center; } .why img { margin: 0 auto; width: 150px; } }
+
+footer { margin-top: 96px; border-top: 1px solid var(--border); padding: 32px 0 48px; color: var(--text-3); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; justify-content: space-between; }
+footer a { color: var(--text-2); }
+/* Grid children default to min-width:auto, so a long <pre> would widen the page. */
+.hero-grid > *, .problem > *, .split > *, .features > *, .steps li > * { min-width: 0; }
+@media (max-width: 620px) {
+  table.cmds td:first-child { white-space: normal; padding-right: 12px; }
+  table.cmds td:first-child:has(kbd) { white-space: nowrap; }
+  table.cmds code { overflow-wrap: anywhere; }
+  .wrap { padding: 0 16px; }
+}
+kbd { font-size: 13px; padding: 1px 7px; border: 1px solid var(--border-hi); border-bottom-width: 2px; border-radius: 6px; background: var(--surface-hi); color: var(--text); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <nav class="wrap nav" aria-label="Main">
+    <a class="brand" href="#top"><img src="img/icon-192.png" alt="" width="32" height="32">DevDuck</a>
+    <ul>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#cli">CLI</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+    </ul>
+    <a class="gh" href="https://github.com/drhalto/devduck">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+</header>
+
+<main id="main">
+  <div class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Free for Windows 10 &amp; 11</span>
+        <h1>Every dev server on your PC. <span class="quack">Sorted.</span></h1>
+        <p class="lede">DevDuck shows what's listening on every port, grouped by project, and says what each one is. One click opens, restarts or stops the whole thing.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="#install">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 3v10m0 0l-4-4m4 4l4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Install DevDuck
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/drhalto/devduck">View on GitHub</a>
+        </div>
+        <p class="meta"><span>Native Rust app + CLI</span><span>~10 ms scans</span><span>MIT licensed</span></p>
+      </div>
+      <div class="mascot">
+        <img src="img/devduck.png" alt="DevDuck, a cartoon yellow duck proudly holding up a network cable plug" width="640" height="860">
+        <span class="chip c1" aria-hidden="true"><i></i>:3000</span>
+        <span class="chip c2" aria-hidden="true"><i></i>:5432</span>
+        <span class="chip c3" aria-hidden="true"><i></i>:5173</span>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <figure class="shot" style="margin-top:56px">
+        <div class="bar" aria-hidden="true"><img src="favicon.png" alt="">DevDuck</div>
+        <img src="img/screenshot.png" alt="The DevDuck window: a sidebar with views and favorites, cards for each dev server showing its framework, ports, page title, HTTP status, memory, CPU and uptime, and a detail drawer with actions, ports and a QR code." width="1770" height="1140">
+      </figure>
+      <p class="caption">Demo data. Every card is a project; the drawer has its ports, process tree, command, logs and a QR code for your phone.</p>
+    </div>
+  </div>
+
+  <section aria-labelledby="problem-h">
+    <div class="wrap">
+      <p class="kicker">The problem</p>
+      <h2 id="problem-h">"Something's already on port 3000."</h2>
+      <p class="sub">You have five projects, two databases and a Storybook running somewhere. <code>netstat</code> gives you a PID. Killing it leaves three orphaned <code>node</code> processes behind, and you still don't know which project it was.</p>
+      <div class="problem">
+        <div class="card before">
+          <span class="label">Before</span>
+          <pre>&gt; netstat -ano | findstr :3000
+  TCP  0.0.0.0:3000  LISTENING  30752
+&gt; taskkill /PID 30752 /F
+SUCCESS: The process with PID 30752 has been terminated.
+<span style="color:#8A93AD"># ...and its workers keep running</span></pre>
+        </div>
+        <div class="card after">
+          <span class="label">With DevDuck</span>
+          <pre>&gt; devduck who 3000
+acme-storefront  (Next.js)
+  folder   ~\acme-storefront
+  tree     6 processes
+&gt; devduck kill 3000
+Stopped acme-storefront (6 processes); freed 3000</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" aria-labelledby="features-h">
+    <div class="wrap">
+      <p class="kicker">What it does</p>
+      <h2 id="features-h">A dashboard for the servers you forgot you started</h2>
+      <p class="sub">It refreshes every couple of seconds and works with whatever you already run: Next.js, Vite, Remotion, Astro, Storybook, Python, .NET or Docker.</p>
+      <div class="features">
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="2.5" y="11" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg></div>
+          <h3>Grouped by project, not by PID</h3>
+          <p>DevDuck walks each process tree past <code>npm</code>, <code>vite</code>, <code>next</code>, <code>uvicorn</code> and friends to find the project folder that owns a port, so five ports from one <code>next dev</code> show up as one card.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2.5" stroke-linecap="round"/></svg></div>
+          <h3>Knows what it is</h3>
+          <p>Framework badge, the page's real <code>&lt;title&gt;</code>, HTTP status and response time, and which port is the web port.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="5" y="5" width="10" height="10" rx="2"/></svg></div>
+          <h3>Stops the whole tree</h3>
+          <p>No orphaned workers. The confirmation says exactly what will end, and Windows system processes are off-limits.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M15.5 7.5A6 6 0 104.5 12"/><path d="M15.8 3.5v4h-4"/></svg></div>
+          <h3>Restart with logs</h3>
+          <p>Restart re-runs the exact command in the same folder and captures its output, so the drawer can show you the logs.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true" style="color:var(--duck)"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.2l2.3 4.9 5.3.6-3.9 3.7 1 5.3L10 14.1l-4.7 2.6 1-5.3L2.4 7.7l5.3-.6z"/></svg></div>
+          <h3>Favorites you can start</h3>
+          <p>Star a project or container and it stays in the sidebar even when it's stopped. Press ▶, or <em>Start all</em> to bring your whole stack up.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14l4-5 3.5 3 3.5-6 4 4"/></svg></div>
+          <h3>Live, honest stats</h3>
+          <p>CPU and memory for the whole process tree, with sparklines. That's what stopping it would actually free.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2" stroke-linecap="round"/></svg></div>
+          <h3>Test on your phone</h3>
+          <p>See which servers your LAN can reach and scan a QR code to open one on your phone. If it's localhost-only, DevDuck tells you the flag to fix that.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true" style="color:var(--cyan)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M10 2l7 3.8v8.4L10 18l-7-3.8V5.8z"/><path d="M3 5.8L10 10l7-4.2M10 10v8"/></svg></div>
+          <h3>Docker aware</h3>
+          <p>Containers that publish ports get their own cards with image, uptime and <code>docker logs</code>. Stop, restart and start work too.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6L3 10l3.5 4M13.5 6L17 10l-3.5 4M11.5 4l-3 12"/></svg></div>
+          <h3>Jump straight in</h3>
+          <p>Open in the browser, copy the URL, or open the folder in VS Code, Cursor or a terminal.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="cli" aria-labelledby="cli-h">
+    <div class="wrap">
+      <p class="kicker">Command line</p>
+      <h2 id="cli-h">A real CLI for scripts and AI agents</h2>
+      <p class="sub"><code>devduck</code> is a proper console program: it waits, prints, and returns exit codes your scripts can trust. Run it with no arguments to open the window.</p>
+      <div class="split">
+        <div class="terminal" role="img" aria-label="Terminal output of devduck who 3000, showing the app, its ports and bind addresses, folder, process tree and command.">
+          <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+<pre aria-hidden="true"><span class="p">&gt;</span> devduck who 3000
+
+<span class="h">acme-storefront</span>  (Next.js)
+  <span class="k">ports  </span>  :3000 [0.0.0.0, [::]]  :61427 [127.0.0.1]
+  <span class="k">folder </span>  C:\Users\dev\acme-storefront
+  <span class="k">process</span>  cmd.exe (18244)   up 2h 14m   612 MB
+  <span class="k">tree   </span>  3 processes
+             cmd.exe (18244)
+               node.exe (18250)
+                 node.exe (18302)
+  <span class="k">command</span>  cmd.exe /d /s /c next dev --turbopack
+  <span class="k">cwd    </span>  C:\Users\dev\acme-storefront
+
+<span class="p">&gt;</span> devduck kill 3000
+<span class="g">Stopped acme-storefront</span> - cmd.exe (18244) (3 processes); freed 3000, 61427</pre>
+        </div>
+        <table class="cmds">
+          <caption class="visually-hidden">DevDuck commands</caption>
+          <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>devduck</code></td><td>Open the window.</td></tr>
+            <tr><td><code>devduck list</code></td><td>Every listener as a table. Add <code>--json</code> for bind addresses, framework, process count and working directory.</td></tr>
+            <tr><td><code>devduck who 3000</code></td><td>What's on a port: app, folder, process tree, command.</td></tr>
+            <tr><td><code>devduck kill 3000</code></td><td>Stop whatever owns a port: the whole tree, or <code>docker stop</code>. Refuses Windows system processes.</td></tr>
+            <tr><td><code>devduck open 3000</code></td><td>Open <code>http://localhost:3000</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="install-h">
+    <div class="wrap split">
+      <div>
+        <p class="kicker">Install</p>
+        <h2 id="install-h">Three commands and it's yours</h2>
+        <p class="sub" style="margin-bottom:28px">DevDuck builds from source with Rust. There's nothing to configure and you don't need admin rights.</p>
+        <ol class="steps">
+          <li>
+            <div>
+              <h3>Have Rust ready</h3>
+              <p>Windows 10 or 11 with the MSVC Rust toolchain (1.88 or newer). If you don't have it, <a href="https://rustup.rs/">rustup</a> sets it up in a few minutes.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Clone and install</h3>
+              <p>The script builds a release, copies <code>devduck.exe</code> and <code>devduck-app.exe</code> to <code>~\.local\bin</code>, and adds DevDuck to the Start menu.</p>
+              <div class="code"><code>git clone https://github.com/drhalto/devduck
+cd devduck
+.\scripts\install.ps1</code><button class="copy" type="button" data-copy="git clone https://github.com/drhalto/devduck&#10;cd devduck&#10;.\scripts\install.ps1">Copy</button></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Open it and pin it</h3>
+              <p>Start DevDuck from the Start menu, then right-click its taskbar icon and choose <strong>Pin to taskbar</strong>. Make sure <code>~\.local\bin</code> is on your <code>PATH</code> to use <code>devduck</code> in a terminal.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <h3>Keyboard</h3>
+        <table class="cmds" style="margin-top:10px">
+          <caption class="visually-hidden">Keyboard shortcuts</caption>
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Search apps, ports, folders, frameworks and page titles</td></tr>
+            <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move between servers</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Open in the browser</td></tr>
+            <tr><td><kbd>Del</kbd></td><td>Stop the selected server</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>B</kbd></td><td>Show or hide the sidebar</td></tr>
+            <tr><td><kbd>F5</kbd></td><td>Refresh now</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy" class="privacy" aria-labelledby="privacy-h">
+    <div class="wrap split">
+      <div>
+        <p class="kicker">Safety &amp; privacy</p>
+        <h2 id="privacy-h">It only touches what you point at</h2>
+        <p class="sub">DevDuck runs entirely on your machine. There's no account, no telemetry and no network calls beyond your own <code>localhost</code>.</p>
+      </div>
+      <ul>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Never walks into shells, editors or Windows services.</strong> Explorer, terminals, VS Code, Cursor and core services are protected, and system processes are never killed from the CLI.</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Only re-runs commands it saw.</strong> Restart, Start and favorites use the command DevDuck saw running from that folder, nothing else.</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>One polite HTTP check.</strong> A single <code>GET /</code> to each dev-server port when it appears, and again when you ask. It never probes databases, apps, containers or internal ports, and you can turn it off.</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Your data stays put.</strong> Settings, favorites and logs live in <code>%APPDATA%\DevDuck</code>.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section aria-labelledby="why-h">
+    <div class="wrap">
+      <div class="why">
+        <img src="img/devduck-thumbs.png" alt="DevDuck wearing headphones and giving a thumbs up" width="360" height="526">
+        <div>
+          <h2 id="why-h">Why a duck?</h2>
+          <p>Rubber-duck debugging, but this duck actually knows what's on port 3000. It also beats calling the app "Port Listener Utility".</p>
+          <p style="margin-top:18px"><a class="btn btn-primary" href="https://github.com/drhalto/devduck">Get DevDuck on GitHub</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>DevDuck is MIT licensed · made by <a href="https://github.com/drhalto">@drhalto</a></span>
+    <span>Geist fonts by Vercel (SIL OFL) · mascot drawn with gpt-image-2</span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll("button.copy").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 1800);
+    });
+  });
+</script>
+</body>
+</html>

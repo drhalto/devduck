@@ -649,8 +649,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
-name = "dev-ports"
-version = "2.0.0"
+name = "devduck"
+version = "2.1.0"
 dependencies = [
  "eframe",
  "egui_extras",
