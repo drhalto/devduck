@@ -12,6 +12,7 @@ If you run a lot of dev servers, you know the pain: something's holding port 300
 - **Says what it is.** Framework badge (Next.js, Vite, Remotion, Astro, Storybook, Uvicorn, Django...) from the command line and `package.json`; the page's real `<title>`; HTTP status and latency; which port is the web port and which are internal.
 - **Live.** Rescans every 2 s (adjustable, or pause), with CPU and memory sparklines. Memory and CPU cover the **whole process tree**, which is what stopping it would free.
 - **Restart and Start.** Restart stops the tree and re-runs the exact command in the same folder. Stopped projects stay under *Recently stopped* with a **Start** button. Servers Dev Ports starts have their output captured, and the drawer shows their logs.
+- **Favorites in a sidebar.** Star a dev project or container and it stays in the sidebar whether it's running or not: a live status dot while it's up, a **▶** to start it when it's down (dev servers re-run their remembered command; containers get `docker start`), **Start all** for the stopped ones, and a right-click menu. The sidebar also holds the All / Dev / Docker / Apps / Windows views; hide it with `Ctrl B`.
 - **Detail drawer.** Ports with bind addresses (localhost-only vs. reachable on your LAN), a **QR code** to open it on your phone, the process tree, the command line and working directory, plus logs (Docker logs for containers).
 - **Docker aware.** Ports published by containers show as container cards (name, image, uptime). Stop is `docker stop`, Restart is `docker restart`.
 - **Jump-offs:** open in browser, copy URL, open the folder, open it in VS Code or Cursor, open a terminal there.
@@ -31,7 +32,7 @@ That builds the release, copies the two programs to `~\.local\bin` (pass `-Dest`
 
 | | |
 |---|---|
-| `devports-app.exe` | The window. Open it once and right-click its taskbar icon, **Pin to taskbar**. |
+| `devports-app.exe` | The window. Open it once and right-click its taskbar icon, **Pin to taskbar**. Launching it again just brings the open window forward. |
 | `devports.exe` | The command line. With no arguments it opens the window. |
 
 There's nothing to configure, and admin rights aren't required (though admin lets you stop processes owned by other users).
@@ -58,6 +59,7 @@ devports open 3000       open http://localhost:3000
 | `Enter` | open the selected server in the browser |
 | `Del` | stop the selected server |
 | `F5` / `Ctrl R` | refresh now |
+| `Ctrl B` | show or hide the sidebar |
 | `Esc` | clear search, then close the drawer |
 
 ## How the grouping works
@@ -74,9 +76,9 @@ That root is what Stop kills (`taskkill /T`) and what Restart re-runs. These rul
 
 - A confirmation names the app, the process and how many child processes will end (you can turn it off in Settings).
 - Windows kernel listeners and a curated "never kill" list (Explorer, terminals, VS Code, Cursor, Visual Studio, core Windows services) are never walked into or terminated. The CLI refuses system processes outright.
-- Restart and Start only ever run a command Dev Ports saw running from that folder.
+- Restart, Start and favorites only ever run a command Dev Ports saw running from that folder.
 - HTTP checks: Dev Ports sends one `GET /` to each **dev server** port when it first appears, and again when you open its drawer or click Re-check. It never probes containers, apps, system services or internal (49152+) ports. You can turn this off in Settings.
-- State (settings, recently stopped projects) lives in `%APPDATA%\DevPorts\state.json`; logs of servers it starts are in `%APPDATA%\DevPorts\logs`. Nothing leaves your machine.
+- State (settings, favorites, recently stopped projects) lives in `%APPDATA%\DevPorts\state.json`; logs of servers it starts are in `%APPDATA%\DevPorts\logs`. Nothing leaves your machine.
 
 ## Under the hood
 

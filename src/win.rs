@@ -87,6 +87,8 @@ unsafe extern "system" {
     fn GetSystemTimeAsFileTime(filetime: *mut u64);
     fn GetLocalTime(time: *mut SystemTime);
     fn GetCurrentProcessId() -> u32;
+    fn CreateMutexW(attributes: *mut c_void, initial_owner: i32, name: *const u16) -> Handle;
+    fn GetLastError() -> u32;
 }
 
 #[link(name = "user32", kind = "raw-dylib")]
@@ -96,6 +98,11 @@ unsafe extern "system" {
     fn IsWindowVisible(hwnd: Handle) -> i32;
     fn GetWindow(hwnd: Handle, cmd: u32) -> Handle;
     fn GetWindowLongPtrW(hwnd: Handle, index: i32) -> isize;
+    fn GetClassNameW(hwnd: Handle, name: *mut u16, max: i32) -> i32;
+    fn GetWindowTextW(hwnd: Handle, text: *mut u16, max: i32) -> i32;
+    fn ShowWindow(hwnd: Handle, cmd: i32) -> i32;
+    fn IsIconic(hwnd: Handle) -> i32;
+    fn SetForegroundWindow(hwnd: Handle) -> i32;
 }
 
 #[link(name = "dwmapi", kind = "raw-dylib")]
@@ -371,4 +378,43 @@ pub fn style_title_bar(caption: [u8; 3], text: [u8; 3], border: [u8; 3]) -> bool
     set(35, colorref(caption)); // DWMWA_CAPTION_COLOR
     set(36, colorref(text)); // DWMWA_TEXT_COLOR
     true
+}
+
+/// Claim the "one Dev Ports window" slot. Returns false if another instance holds it.
+/// (The mutex handle is deliberately leaked: it must live as long as the process.)
+pub fn claim_single_instance() -> bool {
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+    let name = wide("Local\\DevPorts.App.SingleInstance");
+    unsafe {
+        let handle = CreateMutexW(null_mut(), 0, name.as_ptr());
+        !(handle.is_null() || GetLastError() == ERROR_ALREADY_EXISTS)
+    }
+}
+
+/// Bring the already-running Dev Ports window to the front (restoring it if minimized).
+pub fn focus_existing_window() -> bool {
+    unsafe extern "system" fn find(hwnd: Handle, lparam: isize) -> i32 {
+        let mut class = [0u16; 64];
+        let mut title = [0u16; 64];
+        unsafe {
+            let n = GetClassNameW(hwnd, class.as_mut_ptr(), 64) as usize;
+            let t = GetWindowTextW(hwnd, title.as_mut_ptr(), 64) as usize;
+            if String::from_utf16_lossy(&class[..n]) == "Window Class" && String::from_utf16_lossy(&title[..t]) == "Dev Ports" {
+                *(lparam as *mut Handle) = hwnd;
+                return 0;
+            }
+        }
+        1
+    }
+    let mut hwnd: Handle = null_mut();
+    unsafe {
+        EnumWindows(find, &mut hwnd as *mut Handle as isize);
+        if hwnd.is_null() {
+            return false;
+        }
+        if IsIconic(hwnd) != 0 {
+            ShowWindow(hwnd, 9); // SW_RESTORE
+        }
+        SetForegroundWindow(hwnd) != 0
+    }
 }

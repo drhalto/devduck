@@ -19,7 +19,7 @@ use eframe::egui;
 
 use crate::probe::{self, Probe};
 use crate::scan::{self, Kind, PortApp, Scanner};
-use crate::store::{self, Recent, State, ViewMode};
+use crate::store::{self, Favorite, FavoriteKind, Recent, State, ViewMode};
 use crate::{icon, launch, win};
 
 pub fn run(demo: bool) -> eframe::Result {
@@ -114,6 +114,14 @@ pub(crate) enum Action {
     SetView(ViewMode),
     OpenSettings,
     Reprobe(String),
+    /// Star or unstar a running row (dev project or container) by its key.
+    ToggleFavorite(String),
+    /// Star or unstar a recently stopped project by folder.
+    ToggleFavoriteRecent(String),
+    RemoveFavorite(String),
+    StartFavorite(String),
+    StartAllFavorites,
+    ToggleSidebar,
 }
 
 /// What the status light on a row means.
@@ -142,7 +150,7 @@ pub(crate) struct LogView {
 /// Developer hook for README screenshots and visual checks that never touch the real
 /// desktop: with DEVPORTS_SHOT=<file.bmp> the window opens off-screen and unfocused,
 /// applies DEVPORTS_UI ("select=<app>;view=list;chip=docker;search=x;dialog=settings|stop;
-/// act=restart|stop|start:<app>;delay=<ms>"), saves one frame as a BMP and exits.
+/// act=restart|stop|start|favorite|startfav:<app>;delay=<ms>"), saves one frame as a BMP and exits.
 struct ShotHook {
     path: String,
     started: Instant,
@@ -255,6 +263,7 @@ impl DevPorts {
                     }
                 }
                 "search" => self.search = v.to_string(),
+                "sidebar" => self.state.settings.sidebar = v != "0",
                 "select" => self.shot.as_mut().unwrap().select = Some(v.to_string()),
                 "dialog" => self.shot.as_mut().unwrap().dialog = Some(v.to_string()),
                 "act" => {
@@ -292,10 +301,13 @@ impl DevPorts {
         if let Some((what, app)) = hook.act.clone() {
             let row_key = self.rows.iter().find(|r| r.app == app).map(|r| r.key.clone());
             let folder = self.state.recent.iter().find(|e| e.app == app).map(|e| e.folder.clone());
+            let fav_id = self.state.favorites.iter().find(|f| f.name == app).map(Favorite::id);
             let action = match (what.as_str(), row_key, folder) {
                 ("restart", Some(k), _) => Some(Action::Restart(k)),
                 ("stop", Some(k), _) => Some(Action::Stop(k)),
                 ("start", None, Some(f)) => Some(Action::Start(f)),
+                ("favorite", Some(k), _) => Some(Action::ToggleFavorite(k)),
+                ("startfav", _, _) => fav_id.map(Action::StartFavorite),
                 _ => None,
             };
             if let Some(a) = action {
@@ -328,6 +340,33 @@ impl DevPorts {
 
     fn row(&self, key: &str) -> Option<&PortApp> {
         self.rows.iter().find(|r| r.key == key)
+    }
+
+    /// The favorite a running row belongs to, if it's starred.
+    pub(crate) fn favorite_of(&self, r: &PortApp) -> Option<&Favorite> {
+        self.state.favorites.iter().find(|f| match (f.kind, r.kind) {
+            (FavoriteKind::Project, Kind::Dev) => !r.folder.is_empty() && f.target.eq_ignore_ascii_case(&r.folder),
+            (FavoriteKind::Container, Kind::Docker) => f.target == r.docker_name,
+            _ => false,
+        })
+    }
+
+    /// The running row for a favorite, if it's up.
+    pub(crate) fn running_row(&self, f: &Favorite) -> Option<&PortApp> {
+        self.rows.iter().find(|r| match (f.kind, r.kind) {
+            (FavoriteKind::Project, Kind::Dev) => f.target.eq_ignore_ascii_case(&r.folder),
+            (FavoriteKind::Container, Kind::Docker) => f.target == r.docker_name,
+            _ => false,
+        })
+    }
+
+    pub(crate) fn can_favorite(r: &PortApp) -> bool {
+        (r.kind == Kind::Dev && !r.folder.is_empty()) || r.kind == Kind::Docker
+    }
+
+    /// Whether a favorite is being started (from the sidebar or Recently stopped).
+    pub(crate) fn favorite_busy(&self, f: &Favorite) -> bool {
+        self.busy.contains_key(&format!("fav:{}", f.id())) || (f.kind == FavoriteKind::Project && self.busy.contains_key(&format!("start:{}", f.target)))
     }
 
     fn probe_of(&self, key: &str, port: u16) -> Option<&ProbeEntry> {
@@ -511,6 +550,24 @@ impl DevPorts {
             }
         }
 
+        // Favorites remember how to start themselves; refresh that while they run.
+        for f in &mut self.state.favorites {
+            let running = rows.iter().find(|r| match (f.kind, r.kind) {
+                (FavoriteKind::Project, Kind::Dev) => f.target.eq_ignore_ascii_case(&r.folder),
+                (FavoriteKind::Container, Kind::Docker) => f.target == r.docker_name,
+                _ => false,
+            });
+            if let Some(r) = running {
+                f.name = r.app.clone();
+                f.framework = r.framework.clone();
+                f.ports = r.port_numbers();
+                if f.kind == FavoriteKind::Project && !r.root_cmd.is_empty() && r.root_cmd != UNAVAILABLE {
+                    f.command = r.root_cmd.clone();
+                    f.cwd = r.cwd.clone().or_else(|| Some(r.folder.clone()));
+                }
+            }
+        }
+
         if let Some(folder) = &self.reselect_folder
             && let Some(r) = rows.iter().find(|r| r.folder.eq_ignore_ascii_case(folder))
         {
@@ -524,7 +581,7 @@ impl DevPorts {
             self.selected = None;
             self.drawer = false;
         }
-        self.busy.retain(|k, _| rows.iter().any(|r| &r.key == k));
+        self.busy.retain(|k, _| k.starts_with("fav:") || k.starts_with("start:") || rows.iter().any(|r| &r.key == k));
         self.rows = rows;
         self.scanned = Some(now);
         self.scan_clock = win::local_clock();
@@ -551,6 +608,10 @@ impl DevPorts {
                         self.dialog = Some(Dialog::Error(title, body));
                     }
                     if let Some(l) = launched {
+                        if self.state.recent_mut(&l.folder).is_none() {
+                            let app = std::path::Path::new(&l.folder).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            self.state.recent.push(Recent { folder: l.folder.clone(), app, last_seen: store::now_unix(), ..Default::default() });
+                        }
                         if let Some(e) = self.state.recent_mut(&l.folder) {
                             e.launched_pid = Some(l.pid);
                             e.log = Some(l.log);
@@ -698,6 +759,66 @@ impl DevPorts {
                 self.save_now();
             }
             Action::OpenSettings => self.dialog = Some(Dialog::Settings),
+            Action::ToggleFavorite(key) => {
+                let Some(r) = self.row(&key).cloned() else { return };
+                if let Some(id) = self.favorite_of(&r).map(Favorite::id) {
+                    self.state.favorites.retain(|f| f.id() != id);
+                    self.toast(format!("Removed {} from favorites", r.app), true);
+                } else if Self::can_favorite(&r) {
+                    let recent = self.state.recent.iter().find(|e| e.folder.eq_ignore_ascii_case(&r.folder));
+                    let (command, cwd) = match self.relaunch_spec(&r) {
+                        Some((c, d)) => (c, Some(d)),
+                        None => (recent.map(|e| e.command.clone()).unwrap_or_default(), recent.and_then(|e| e.cwd.clone())),
+                    };
+                    let fav = if r.kind == Kind::Docker {
+                        Favorite { kind: FavoriteKind::Container, target: r.docker_name.clone(), name: r.app.clone(), framework: r.framework.clone(), ports: r.port_numbers(), ..Default::default() }
+                    } else {
+                        Favorite { kind: FavoriteKind::Project, target: r.folder.clone(), name: r.app.clone(), framework: r.framework.clone(), ports: r.port_numbers(), command, cwd }
+                    };
+                    self.state.favorites.push(fav);
+                    self.toast(format!("Added {} to favorites", r.app), true);
+                }
+                self.save_now();
+            }
+            Action::ToggleFavoriteRecent(folder) => {
+                let id = format!("project:{}", folder.to_lowercase());
+                if self.state.favorites.iter().any(|f| f.id() == id) {
+                    self.state.favorites.retain(|f| f.id() != id);
+                } else if let Some(e) = self.state.recent.iter().find(|e| e.folder.eq_ignore_ascii_case(&folder)).cloned() {
+                    self.state.favorites.push(Favorite {
+                        kind: FavoriteKind::Project,
+                        target: e.folder.clone(),
+                        name: e.app.clone(),
+                        framework: e.framework.clone(),
+                        ports: e.ports.clone(),
+                        command: e.command.clone(),
+                        cwd: e.cwd.clone(),
+                    });
+                    self.toast(format!("Added {} to favorites", e.app), true);
+                }
+                self.save_now();
+            }
+            Action::RemoveFavorite(id) => {
+                self.state.favorites.retain(|f| f.id() != id);
+                self.save_now();
+            }
+            Action::StartFavorite(id) => self.start_favorite(&id),
+            Action::StartAllFavorites => {
+                let stopped: Vec<String> = self
+                    .state
+                    .favorites
+                    .iter()
+                    .filter(|f| self.running_row(f).is_none() && !self.favorite_busy(f))
+                    .map(Favorite::id)
+                    .collect();
+                for id in stopped {
+                    self.start_favorite(&id);
+                }
+            }
+            Action::ToggleSidebar => {
+                self.state.settings.sidebar = !self.state.settings.sidebar;
+                self.save_now();
+            }
             Action::Reprobe(key) => {
                 if let Some(r) = self.row(&key).cloned()
                     && r.kind == Kind::Dev
@@ -806,27 +927,72 @@ impl DevPorts {
 
     fn start(&mut self, folder: &str) {
         let Some(e) = self.state.recent.iter().find(|e| e.folder.eq_ignore_ascii_case(folder)).cloned() else { return };
+        let cwd = e.cwd.clone().unwrap_or_else(|| e.folder.clone());
+        self.launch_project(format!("start:{}", e.folder), &e.app, &e.command, &cwd, &e.folder);
+    }
+
+    fn start_favorite(&mut self, id: &str) {
+        let Some(f) = self.state.favorites.iter().find(|f| f.id() == id).cloned() else { return };
+        if self.running_row(&f).is_some() {
+            return;
+        }
+        let busy_key = format!("fav:{id}");
+        match f.kind {
+            FavoriteKind::Project => {
+                // Fall back to what Recently stopped knows if the favorite never saw it run.
+                let recent = self.state.recent.iter().find(|e| e.folder.eq_ignore_ascii_case(&f.target));
+                let command = if f.command.is_empty() { recent.map(|e| e.command.clone()).unwrap_or_default() } else { f.command.clone() };
+                let cwd = f.cwd.clone().or_else(|| recent.and_then(|e| e.cwd.clone())).unwrap_or_else(|| f.target.clone());
+                self.launch_project(busy_key, &f.name, &command, &cwd, &f.target);
+            }
+            FavoriteKind::Container => {
+                if self.demo {
+                    self.toast(format!("Demo mode: {} was not started", f.name), false);
+                    return;
+                }
+                self.busy.insert(busy_key.clone(), "Starting");
+                let (tx, ctx) = (self.tx.clone(), self.ctx.clone());
+                std::thread::spawn(move || {
+                    let msg = match launch::docker(&["start", &f.target]) {
+                        Ok(_) => Msg::Done { key: busy_key, toast: Some(format!("Started {}", f.name)), error: None, launched: None },
+                        Err(e) => {
+                            let body = if e.contains("error during connect") || e.contains("Couldn't run docker") {
+                                "Docker isn't running. Start Docker Desktop, then try again.".to_string()
+                            } else {
+                                e
+                            };
+                            Msg::Done { key: busy_key, toast: None, error: Some((format!("Couldn't start {}", f.name), body)), launched: None }
+                        }
+                    };
+                    let _ = tx.send(msg);
+                    ctx.request_repaint();
+                });
+            }
+        }
+    }
+
+    /// Run a remembered dev-server command in its folder, with output captured to a log.
+    fn launch_project(&mut self, busy_key: String, app: &str, command: &str, cwd: &str, folder: &str) {
         if self.demo {
-            self.toast(format!("Demo mode: {} was not started", e.app), false);
+            self.toast(format!("Demo mode: {app} was not started"), false);
             return;
         }
-        if e.command.is_empty() {
-            self.dialog = Some(Dialog::Error(format!("Can't start {}", e.app), "Dev Ports never saw this project's command line, so it doesn't know how to start it.".into()));
+        if command.is_empty() {
+            self.dialog = Some(Dialog::Error(format!("Can't start {app}"), "Dev Ports never saw this project's command line, so it doesn't know how to start it. Run it once as usual and it will remember.".into()));
             return;
         }
-        let key = format!("start:{}", e.folder);
-        self.busy.insert(key.clone(), "Starting");
+        self.busy.insert(busy_key.clone(), "Starting");
         let (tx, ctx) = (self.tx.clone(), self.ctx.clone());
+        let (app, command, cwd, folder) = (app.to_string(), command.to_string(), cwd.to_string(), folder.to_string());
         std::thread::spawn(move || {
-            let cwd = e.cwd.clone().unwrap_or_else(|| e.folder.clone());
-            let msg = match launch::start(&e.app, &e.command, &cwd) {
+            let msg = match launch::start(&app, &command, &cwd) {
                 Ok((pid, log)) => Msg::Done {
-                    key,
-                    toast: Some(format!("Starting {}", e.app)),
+                    key: busy_key,
+                    toast: Some(format!("Starting {app}")),
                     error: None,
-                    launched: Some(Launched { folder: e.folder.clone(), pid, log: log.to_string_lossy().into_owned() }),
+                    launched: Some(Launched { folder, pid, log: log.to_string_lossy().into_owned() }),
                 },
-                Err(err) => Msg::Done { key, toast: None, error: Some((format!("Couldn't start {}", e.app), err)), launched: None },
+                Err(err) => Msg::Done { key: busy_key, toast: None, error: Some((format!("Couldn't start {app}"), err)), launched: None },
             };
             let _ = tx.send(msg);
             ctx.request_repaint();
@@ -954,7 +1120,22 @@ fn demo_state() -> State {
         Recent { folder: r"C:\Users\dev\docs-site".into(), app: "docs-site".into(), framework: Some("Astro".into()), ports: vec![4321], command: "npm run dev".into(), cwd: Some(r"C:\Users\dev\docs-site".into()), last_seen: now - 3 * 3600, ..Default::default() },
         Recent { folder: r"C:\Users\dev\ml-notebooks".into(), app: "ml-notebooks".into(), framework: Some("Jupyter".into()), ports: vec![8888], command: "jupyter lab".into(), cwd: None, last_seen: now - 86_400 - 3600, ..Default::default() },
     ];
-    State { recent, ..Default::default() }
+    let fav = |kind, target: &str, name: &str, fw: &str, ports: Vec<u16>| Favorite {
+        kind,
+        target: target.into(),
+        name: name.into(),
+        framework: Some(fw.into()),
+        ports,
+        command: "npm run dev".into(),
+        cwd: None,
+    };
+    let favorites = vec![
+        fav(FavoriteKind::Project, r"C:\Users\dev\acme-storefront", "acme-storefront", "Next.js", vec![3000]),
+        fav(FavoriteKind::Container, "postgres-16", "postgres-16", "postgres", vec![5432]),
+        fav(FavoriteKind::Project, r"C:\Users\dev\docs-site", "docs-site", "Astro", vec![4321]),
+        fav(FavoriteKind::Container, "billing-db", "billing-db", "postgres", vec![5433]),
+    ];
+    State { recent, favorites, ..Default::default() }
 }
 
 fn demo_probe(r: &PortApp, port: u16) -> Probe {

@@ -65,6 +65,48 @@ pub fn icon_button(ui: &mut Ui, id: Id, rect: Rect, icon: Icon, tip: &str, dange
     resp.on_hover_text(tip)
 }
 
+/// Favorite toggle: an amber filled star when on, an outline that brightens on hover when off.
+pub fn star_button(ui: &mut Ui, id: Id, rect: Rect, on: bool) -> Response {
+    let tip = if on { "Remove from favorites" } else { "Add to favorites" };
+    let resp = ui.interact(rect, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    resp.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, "Favorite"));
+    let t = hover_t(ui, id, resp.hovered() || resp.has_focus());
+    let p = ui.painter();
+    if t > 0.0 {
+        p.rect_filled(rect, 7.0, tint(SURFACE_2, t));
+    }
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(15.0, 15.0));
+    if on {
+        icons::paint(p, icon_rect, Icon::StarFilled, AMBER);
+    } else {
+        icons::paint(p, icon_rect, Icon::Star, mix(TEXT_3, AMBER, t));
+    }
+    focus_ring(p, rect, 7.0, &resp);
+    resp.on_hover_text(tip)
+}
+
+/// Green play button for starting something.
+pub fn go_button(ui: &mut Ui, id: Id, rect: Rect, tip: &str) -> Response {
+    let resp = ui.interact(rect, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    let tip_owned = tip.to_string();
+    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &tip_owned));
+    let t = hover_t(ui, id, resp.hovered() || resp.has_focus());
+    let p = ui.painter();
+    p.rect_filled(rect, 8.0, mix(Color32::from_rgb(0x13, 0x2B, 0x22), Color32::from_rgb(0x18, 0x40, 0x2F), t));
+    p.rect_stroke(rect, 8.0, Stroke::new(1.0, tint(GREEN, 0.35 + 0.25 * t)), StrokeKind::Inside);
+    icons::paint(p, Rect::from_center_size(rect.center() + vec2(0.5, 0.0), vec2(12.0, 12.0)), Icon::Play, GREEN);
+    focus_ring(p, rect, 8.0, &resp);
+    resp.on_hover_text(tip)
+}
+
+/// Three pulsing dots ("working on it"). `time` is the UI clock in seconds.
+pub fn spinner(p: &Painter, center: Pos2, time: f32) {
+    for i in 0..3 {
+        let a = 0.3 + 0.7 * ((time * 4.0 - i as f32 * 0.7).sin() * 0.5 + 0.5);
+        p.circle_filled(center + vec2(-7.0 + i as f32 * 7.0, 0.0), 2.6, tint(TEXT, a));
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
     Normal,

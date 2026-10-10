@@ -14,13 +14,14 @@ use super::{Action, Chip, DevPorts, Dialog, Health};
 use crate::launch;
 use crate::probe::Probe;
 use crate::scan::{Exposure, Kind, PortApp, PortInfo};
-use crate::store::{self, Editor, Recent, ViewMode};
+use crate::store::{self, Editor, Favorite, FavoriteKind, Recent, ViewMode};
 
 const CARD_H: f32 = 190.0;
 const CARD_MIN_W: f32 = 300.0;
 const GAP: f32 = 14.0;
 const ROW_H: f32 = 46.0;
 const SEARCH_ID: &str = "search";
+const SIDEBAR_W: f32 = 252.0;
 
 pub(crate) struct Visible<'a> {
     dev: Vec<&'a PortApp>,
@@ -129,7 +130,7 @@ impl DevPorts {
         let focused = self.ctx.memory(|m| m.focused());
         let in_search = focused == Some(search_id);
         let free = focused.is_none() || in_search;
-        let (find, refresh, esc, down, up, enter, del) = self.ctx.input_mut(|i| {
+        let (find, refresh, esc, down, up, enter, del, sidebar) = self.ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::K) || i.consume_key(Modifiers::COMMAND, Key::F),
                 i.consume_key(Modifiers::NONE, Key::F5) || i.consume_key(Modifiers::COMMAND, Key::R),
@@ -138,8 +139,12 @@ impl DevPorts {
                 free && i.consume_key(Modifiers::NONE, Key::ArrowUp),
                 free && i.consume_key(Modifiers::NONE, Key::Enter),
                 !in_search && i.consume_key(Modifiers::NONE, Key::Delete),
+                i.consume_key(Modifiers::COMMAND, Key::B),
             )
         });
+        if sidebar {
+            actions.push(Action::ToggleSidebar);
+        }
         if find {
             self.focus_search = true;
         }
@@ -184,6 +189,7 @@ impl DevPorts {
     // --------------------------------------------------------------- frame --
 
     pub(crate) fn draw(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        self.sidebar_panel(ui, actions);
         self.header(ui, actions);
         if self.drawer && self.selected.as_ref().is_some_and(|k| self.row(k).is_some()) {
             self.drawer_panel(ui, actions);
@@ -203,10 +209,20 @@ impl DevPorts {
                 let full = ui.max_rect();
                 let p = ui.painter().clone();
 
-                // Row 1: mark, name, summary ................ live, refresh, settings
+                // Row 1: [sidebar toggle, mark, name] summary ........ live, refresh, settings
+                let sidebar = self.state.settings.sidebar;
                 let r1 = Rect::from_min_size(full.min, vec2(full.width(), 34.0));
-                icons::logo(&p, Rect::from_min_size(pos2(r1.left(), r1.center().y - 13.0), vec2(26.0, 26.0)));
-                let title = p.text(pos2(r1.left() + 38.0, r1.center().y), Align2::LEFT_CENTER, "Dev Ports", semibold(17.0), TEXT);
+                let title_right = if sidebar {
+                    r1.left() - 18.0
+                } else {
+                    let open = Rect::from_min_size(pos2(r1.left(), r1.center().y - 17.0), vec2(34.0, 34.0));
+                    if widgets::icon_button(ui, Id::new("open-sidebar"), open, Icon::Sidebar, "Show sidebar (Ctrl B)", false, true).clicked() {
+                        actions.push(Action::ToggleSidebar);
+                    }
+                    let lx = open.right() + 12.0;
+                    icons::logo(&p, Rect::from_min_size(pos2(lx, r1.center().y - 13.0), vec2(26.0, 26.0)));
+                    p.text(pos2(lx + 38.0, r1.center().y), Align2::LEFT_CENTER, "Dev Ports", semibold(17.0), TEXT).right()
+                };
 
                 let mut x = r1.right();
                 let settings = Rect::from_min_size(pos2(x - 34.0, r1.center().y - 17.0), vec2(34.0, 34.0));
@@ -222,7 +238,7 @@ impl DevPorts {
                 let live_rect = self.live_pill(ui, &p, pos2(x, r1.center().y), actions);
 
                 let summary = self.summary();
-                widgets::text(&p, pos2(title.right() + 18.0, r1.center().y + 1.0), Align2::LEFT_CENTER, &summary, sans(13.0), TEXT_2, live_rect.left() - title.right() - 36.0);
+                widgets::text(&p, pos2(title_right + 18.0, r1.center().y + 1.0), Align2::LEFT_CENTER, &summary, sans(13.0), TEXT_2, live_rect.left() - title_right - 36.0);
 
                 // Row 2: search, kind chips ........................ cards / list
                 let y = r1.bottom() + 14.0;
@@ -250,25 +266,233 @@ impl DevPorts {
                     }
                 }
 
-                let count = |k: Kind| self.rows.iter().filter(|r| r.kind == k).count();
-                let all = self.rows.iter().filter(|r| r.kind != Kind::System).count();
-                let chips = [
-                    (Chip::All, "All", all),
-                    (Chip::Dev, "Dev", count(Kind::Dev)),
-                    (Chip::Docker, "Docker", count(Kind::Docker)),
-                    (Chip::Apps, "Apps", count(Kind::App)),
-                    (Chip::System, "System", count(Kind::System)),
-                ];
-                let chip_area = Rect::from_min_max(pos2(search.right() + 16.0, y + 2.0), pos2(toggle.left() - 12.0, y + 32.0));
-                ui.scope_builder(UiBuilder::new().max_rect(chip_area).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    for (chip, label, n) in chips {
-                        if widgets::chip(ui, label, n, self.chip == chip).clicked() {
-                            actions.push(Action::SetChip(chip));
+                // With the sidebar open these filters live there instead.
+                if !sidebar {
+                    let chip_area = Rect::from_min_max(pos2(search.right() + 16.0, y + 2.0), pos2(toggle.left() - 12.0, y + 32.0));
+                    let views = self.views();
+                    ui.scope_builder(UiBuilder::new().max_rect(chip_area).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        for (chip, _, label, n) in views {
+                            if widgets::chip(ui, label, n, self.chip == chip).clicked() {
+                                actions.push(Action::SetChip(chip));
+                            }
                         }
-                    }
-                });
+                    });
+                }
             });
+    }
+
+    /// The kind filters: (chip, icon, short label, count).
+    fn views(&self) -> [(Chip, Icon, &'static str, usize); 5] {
+        let count = |k: Kind| self.rows.iter().filter(|r| r.kind == k).count();
+        let all = self.rows.iter().filter(|r| r.kind != Kind::System).count();
+        [
+            (Chip::All, Icon::Grid, "All", all),
+            (Chip::Dev, Icon::Code, "Dev", count(Kind::Dev)),
+            (Chip::Docker, Icon::Cube, "Docker", count(Kind::Docker)),
+            (Chip::Apps, Icon::Window, "Apps", count(Kind::App)),
+            (Chip::System, Icon::Shield, "System", count(Kind::System)),
+        ]
+    }
+
+    fn sidebar_panel(&self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        let mut open = self.state.settings.sidebar;
+        egui::Panel::left("sidebar")
+            .exact_size(SIDEBAR_W)
+            .resizable(false)
+            .frame(Frame::new().fill(RAIL).inner_margin(Margin { left: 14, right: 14, top: 16, bottom: 14 }))
+            .show_collapsible(ui, &mut open, |ui| self.sidebar_body(ui, actions));
+    }
+
+    fn sidebar_body(&self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
+        let (top, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
+        let p = ui.painter().clone();
+        icons::logo(&p, Rect::from_min_size(pos2(top.left() + 4.0, top.center().y - 12.0), vec2(24.0, 24.0)));
+        p.text(pos2(top.left() + 38.0, top.center().y), Align2::LEFT_CENTER, "Dev Ports", semibold(16.0), TEXT);
+        let hide = Rect::from_min_size(pos2(top.right() - 32.0, top.center().y - 16.0), vec2(32.0, 32.0));
+        if widgets::icon_button(ui, Id::new("hide-sidebar"), hide, Icon::Sidebar, "Hide sidebar (Ctrl B)", false, true).clicked() {
+            actions.push(Action::ToggleSidebar);
+        }
+
+        ui.add_space(20.0);
+        self.sidebar_label(ui, "Views", None, actions);
+        let names = ["All listeners", "Dev servers", "Containers", "Apps", "Windows"];
+        for ((chip, icon, _, count), name) in self.views().into_iter().zip(names) {
+            if self.nav_item(ui, icon, name, count, self.chip == chip).clicked() {
+                actions.push(Action::SetChip(chip));
+            }
+        }
+
+        ui.add_space(22.0);
+        let stopped = self.state.favorites.iter().filter(|f| self.running_row(f).is_none() && !self.favorite_busy(f)).count();
+        let start_all = (stopped > 0 && self.state.favorites.len() > 1).then_some(stopped);
+        self.sidebar_label(ui, "Favorites", start_all, actions);
+        if self.state.favorites.is_empty() {
+            ui.add_space(4.0);
+            Frame::new().fill(tint(SURFACE, 0.7)).corner_radius(10).inner_margin(Margin::same(12)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+                    icons::paint(ui.painter(), r, Icon::Star, AMBER);
+                    ui.label(RichText::new("No favorites yet").font(medium(13.0)).color(TEXT_2));
+                });
+                ui.add_space(4.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new("Star a dev server or container on its card to keep it here. You can start it from the sidebar even after it stops.")
+                            .font(sans(12.0))
+                            .color(TEXT_3),
+                    )
+                    .wrap(),
+                );
+            });
+        } else {
+            ScrollArea::vertical().id_salt("favorites").auto_shrink([false, false]).show(ui, |ui| {
+                for f in &self.state.favorites {
+                    self.favorite_item(ui, f, actions);
+                }
+            });
+        }
+    }
+
+    /// Section label in the sidebar, optionally with a "Start all (n)" link on the right.
+    fn sidebar_label(&self, ui: &mut Ui, title: &str, start_all: Option<usize>, actions: &mut Vec<Action>) {
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+        widgets::caps(ui.painter(), pos2(rect.left() + 6.0, rect.center().y), title, TEXT_3);
+        if let Some(n) = start_all {
+            let label = format!("Start all ({n})");
+            let w = widgets::text_width(ui.painter(), &label, medium(12.0)) + 14.0;
+            let r = Rect::from_min_size(pos2(rect.right() - w, rect.top()), vec2(w, 24.0));
+            let resp = ui.interact(r, Id::new("start-all"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Start every stopped favorite");
+            resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+            if resp.hovered() {
+                ui.painter().rect_filled(r, 6.0, tint(GREEN, 0.12));
+            }
+            ui.painter().text(r.center(), Align2::CENTER_CENTER, &label, medium(12.0), GREEN);
+            widgets::focus_ring(ui.painter(), r, 6.0, &resp);
+            if resp.clicked() {
+                actions.push(Action::StartAllFavorites);
+            }
+        }
+        ui.add_space(4.0);
+    }
+
+    fn nav_item(&self, ui: &mut Ui, icon: Icon, label: &str, count: usize, selected: bool) -> egui::Response {
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::click());
+        let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+        resp.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
+        let t = ui.ctx().animate_bool_with_time(resp.id.with("h"), resp.hovered(), 0.12);
+        let p = ui.painter();
+        if selected {
+            p.rect_filled(rect, 8.0, SURFACE_2);
+        } else if t > 0.0 {
+            p.rect_filled(rect, 8.0, tint(SURFACE_2, 0.55 * t));
+        }
+        let fg = if selected { TEXT } else { mix(TEXT_2, TEXT, t) };
+        icons::paint(p, Rect::from_center_size(pos2(rect.left() + 18.0, rect.center().y), vec2(15.0, 15.0)), icon, if selected { TEXT } else { TEXT_3 });
+        p.text(pos2(rect.left() + 38.0, rect.center().y), Align2::LEFT_CENTER, label, medium(13.0), fg);
+        p.text(pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, count.to_string(), mono(11.5), TEXT_3);
+        widgets::focus_ring(p, rect, 8.0, &resp);
+        resp
+    }
+
+    fn favorite_item(&self, ui: &mut Ui, f: &Favorite, actions: &mut Vec<Action>) {
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), Sense::click());
+        let id = resp.id;
+        let running = self.running_row(f);
+        let busy = self.favorite_busy(f) || running.is_some_and(|r| self.busy.contains_key(&r.key));
+        let selected = self.drawer && running.is_some_and(|r| self.selected.as_deref() == Some(r.key.as_str()));
+        let hovered = ui.rect_contains_pointer(rect);
+        let label = format!("{}, {}", f.name, if running.is_some() { "running" } else { "stopped" });
+        resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+        let p = ui.painter().clone();
+        if selected {
+            p.rect_filled(rect, 9.0, SURFACE_2);
+        } else if hovered {
+            p.rect_filled(rect, 9.0, tint(SURFACE_2, 0.55));
+        }
+        widgets::focus_ring(&p, rect, 9.0, &resp);
+
+        let (dot_color, hollow) = match running {
+            Some(r) => health_color(self.health(r), r.kind),
+            None => (TEXT_3, true),
+        };
+        widgets::dot(&p, pos2(rect.left() + 14.0, rect.top() + 17.0), dot_color, hollow);
+        let text_x = rect.left() + 28.0;
+        let text_w = rect.width() - 28.0 - 42.0;
+        widgets::text(&p, pos2(text_x, rect.top() + 17.0), Align2::LEFT_CENTER, &f.name, medium(13.5), if running.is_some() { TEXT } else { TEXT_2 }, text_w);
+        let port = match running {
+            Some(r) => Some(self.main_port(r)),
+            None => f.ports.first().copied(),
+        };
+        let mut sub = Vec::new();
+        if running.is_none() {
+            sub.push("stopped".to_string());
+        }
+        if let Some(port) = port {
+            sub.push(format!(":{port}"));
+        }
+        if let Some(fw) = &f.framework {
+            sub.push(fw.clone());
+        }
+        widgets::text(&p, pos2(text_x, rect.top() + 35.0), Align2::LEFT_CENTER, &sub.join(" \u{00B7} "), sans(11.5), TEXT_3, text_w);
+
+        let button = Rect::from_min_size(pos2(rect.right() - 6.0 - 30.0, rect.center().y - 15.0), vec2(30.0, 30.0));
+        if busy {
+            widgets::spinner(&p, button.center(), ui.input(|i| i.time) as f32);
+        } else if running.is_none() {
+            let tip = format!("Start {}", f.name);
+            if widgets::go_button(ui, id.with("start"), button, &tip).clicked() {
+                actions.push(Action::StartFavorite(f.id()));
+            }
+        } else if let Some(r) = running
+            && (hovered || selected)
+            && widgets::icon_button(ui, id.with("open"), button, Icon::Open, "Open in browser", false, true).clicked()
+        {
+            actions.push(Action::OpenMain(r.key.clone()));
+        }
+
+        let tip = match (running, f.kind) {
+            (Some(_), _) => "Click for details \u{00B7} right-click for more".to_string(),
+            (None, FavoriteKind::Container) => "Stopped \u{2014} \u{25B6} runs docker start".to_string(),
+            (None, FavoriteKind::Project) if f.command.is_empty() => "Stopped \u{2014} Dev Ports hasn't seen its command yet".to_string(),
+            (None, FavoriteKind::Project) => format!("Stopped \u{2014} \u{25B6} runs {}", f.command),
+        };
+        let resp = resp.on_hover_text(tip);
+        if resp.clicked()
+            && let Some(r) = running
+        {
+            actions.push(Action::Select(r.key.clone()));
+        }
+        resp.context_menu(|ui| {
+            ui.set_min_width(180.0);
+            match running {
+                Some(r) => {
+                    if ui.button("Open in browser").clicked() {
+                        actions.push(Action::OpenMain(r.key.clone()));
+                    }
+                    if ui.button("Restart").clicked() {
+                        actions.push(Action::Restart(r.key.clone()));
+                    }
+                    if ui.button("Stop").clicked() {
+                        actions.push(Action::AskStop(r.key.clone()));
+                    }
+                }
+                None => {
+                    if ui.button("Start").clicked() {
+                        actions.push(Action::StartFavorite(f.id()));
+                    }
+                }
+            }
+            if f.kind == FavoriteKind::Project && ui.button("Open folder").clicked() {
+                actions.push(Action::Folder(f.target.clone()));
+            }
+            ui.separator();
+            if ui.button("Remove from favorites").clicked() {
+                actions.push(Action::RemoveFavorite(f.id()));
+            }
+        });
     }
 
     fn summary(&self) -> String {
@@ -495,13 +719,21 @@ impl DevPorts {
         // name + framework
         let (dot_color, hollow) = health_color(self.health(r), r.kind);
         widgets::dot(&p, pos2(x0 + 4.0, y + 10.0), dot_color, hollow);
-        let mut name_max = x1 - x0 - 20.0;
+        let mut right_edge = x1;
         if let Some(fw) = r.framework.as_deref() {
             let size = widgets::badge_size(&p, fw);
             widgets::badge(&p, Rect::from_min_size(pos2(x1 - size.x, y), size), fw, framework_color(fw));
-            name_max -= size.x + 10.0;
+            right_edge -= size.x + 6.0;
         }
-        widgets::text(&p, pos2(x0 + 18.0, y + 10.0), Align2::LEFT_CENTER, &r.app, semibold(15.5), TEXT, name_max);
+        if Self::can_favorite(r) {
+            let fav = self.favorite_of(r).is_some();
+            let star = Rect::from_min_size(pos2(right_edge - 24.0, y - 2.0), vec2(24.0, 24.0));
+            if (fav || hovered) && widgets::star_button(ui, id.with("star"), star, fav).clicked() {
+                actions.push(Action::ToggleFavorite(r.key.clone()));
+            }
+            right_edge -= 28.0;
+        }
+        widgets::text(&p, pos2(x0 + 18.0, y + 10.0), Align2::LEFT_CENTER, &r.app, semibold(15.5), TEXT, right_edge - x0 - 24.0);
         y += 26.0;
 
         // folder / image (plus the root process when two rows share a name)
@@ -710,7 +942,14 @@ impl DevPorts {
         widgets::dot(&p, pos2(rect.left() + 18.0, cy), dot_color, hollow);
         let wide = rect.width() > 820.0;
         let name_w = 200.0;
-        let name = widgets::text(&p, pos2(rect.left() + 34.0, cy), Align2::LEFT_CENTER, &r.app, medium(13.5), if r.kind == Kind::System { TEXT_2 } else { TEXT }, name_w - 10.0);
+        let name = widgets::text(&p, pos2(rect.left() + 34.0, cy), Align2::LEFT_CENTER, &r.app, medium(13.5), if r.kind == Kind::System { TEXT_2 } else { TEXT }, name_w - 40.0);
+        if Self::can_favorite(r) {
+            let fav = self.favorite_of(r).is_some();
+            let star = Rect::from_min_size(pos2(name.right() + 4.0, cy - 12.0), vec2(24.0, 24.0));
+            if (fav || hovered) && widgets::star_button(ui, id.with("star"), star, fav).clicked() {
+                actions.push(Action::ToggleFavorite(r.key.clone()));
+            }
+        }
         let mut x = rect.left() + 34.0 + name_w;
         if let Some(fw) = r.framework.as_deref() {
             let size = widgets::badge_size(&p, fw);
@@ -787,7 +1026,12 @@ impl DevPorts {
         let start_size = widgets::button_size(&p, Some(Icon::Play), start_label);
         let forget = Rect::from_min_size(pos2(rect.right() - 8.0 - 30.0, cy - 15.0), vec2(30.0, 30.0));
         let start = Rect::from_min_size(pos2(forget.left() - 8.0 - start_size.x, cy - 16.0), start_size);
-        let info_right = start.left() - 14.0;
+        let star = Rect::from_min_size(pos2(start.left() - 8.0 - 30.0, cy - 15.0), vec2(30.0, 30.0));
+        let fav = self.state.favorites.iter().any(|f| f.kind == FavoriteKind::Project && f.target.eq_ignore_ascii_case(&e.folder));
+        if widgets::star_button(ui, Id::new(("star-recent", &e.folder)), star, fav).clicked() {
+            actions.push(Action::ToggleFavoriteRecent(e.folder.clone()));
+        }
+        let info_right = star.left() - 14.0;
         if info_right - x > 60.0 {
             let info = format!("stopped {}  \u{00B7}  {}", store::ago(e.last_seen), widgets::abbreviate_home(&e.folder));
             widgets::text(&p, pos2(x, cy), Align2::LEFT_CENTER, &info, sans(12.5), TEXT_3, info_right - x);
@@ -881,6 +1125,13 @@ impl DevPorts {
             }
             if widgets::button(ui, Some(Icon::Copy), "Copy URL", Tone::Normal, true).clicked() {
                 actions.push(Action::Copy(format!("http://localhost:{main}"), format!("http://localhost:{main}")));
+            }
+            if Self::can_favorite(r) {
+                let fav = self.favorite_of(r).is_some();
+                let (icon, label) = if fav { (Icon::StarFilled, "Favorited") } else { (Icon::Star, "Favorite") };
+                if widgets::button(ui, Some(icon), label, Tone::Normal, true).on_hover_text("Favorites stay in the sidebar, with a Start button when they're stopped").clicked() {
+                    actions.push(Action::ToggleFavorite(r.key.clone()));
+                }
             }
             if let Some(f) = &folder {
                 if widgets::button(ui, Some(Icon::Folder), "Folder", Tone::Normal, true).clicked() {

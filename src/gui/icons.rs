@@ -23,6 +23,12 @@ pub enum Icon {
     Pause,
     Globe,
     Refresh,
+    Star,
+    StarFilled,
+    Sidebar,
+    Cube,
+    Window,
+    Shield,
 }
 
 pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
@@ -105,6 +111,46 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Pause => {
             p.rect_filled(Rect::from_min_max(at(4.0, 3.0), at(6.8, 13.0)), 1.0 * u, color);
             p.rect_filled(Rect::from_min_max(at(9.2, 3.0), at(12.0, 13.0)), 1.0 * u, color);
+        }
+        Icon::Star | Icon::StarFilled => {
+            let c = at(8.0, 8.6);
+            let pts: Vec<Pos2> = (0..10)
+                .map(|i| {
+                    let a = -PI / 2.0 + i as f32 * PI / 5.0;
+                    let rad = if i % 2 == 0 { 6.8 } else { 2.9 } * u;
+                    c + vec2(a.cos(), a.sin()) * rad
+                })
+                .collect();
+            if icon == Icon::StarFilled {
+                // A star isn't convex: fill the inner pentagon, then each point.
+                let inner: Vec<Pos2> = pts.iter().skip(1).step_by(2).copied().collect();
+                p.add(Shape::convex_polygon(inner, color, Stroke::NONE));
+                for i in 0..5 {
+                    let tip = pts[i * 2];
+                    let (a, b) = (pts[(i * 2 + 9) % 10], pts[i * 2 + 1]);
+                    p.add(Shape::convex_polygon(vec![a, tip, b], color, Stroke::NONE));
+                }
+            } else {
+                let mut closed = pts.clone();
+                closed.push(pts[0]);
+                p.add(Shape::line(closed, Stroke::new(stroke.width * 0.9, color)));
+            }
+        }
+        Icon::Sidebar => {
+            p.rect_stroke(Rect::from_min_max(at(1.5, 2.5), at(14.5, 13.5)), 2.0 * u, stroke, eframe::egui::StrokeKind::Middle);
+            line(&[(6.0, 2.5), (6.0, 13.5)]);
+        }
+        Icon::Cube => {
+            line(&[(8.0, 1.8), (14.0, 5.0), (14.0, 11.0), (8.0, 14.2), (2.0, 11.0), (2.0, 5.0), (8.0, 1.8)]);
+            line(&[(2.0, 5.0), (8.0, 8.2), (14.0, 5.0)]);
+            line(&[(8.0, 8.2), (8.0, 14.2)]);
+        }
+        Icon::Window => {
+            p.rect_stroke(Rect::from_min_max(at(1.5, 2.5), at(14.5, 13.5)), 2.0 * u, stroke, eframe::egui::StrokeKind::Middle);
+            line(&[(1.5, 6.0), (14.5, 6.0)]);
+        }
+        Icon::Shield => {
+            line(&[(8.0, 1.8), (13.5, 3.8), (13.5, 8.0), (8.0, 14.2), (2.5, 8.0), (2.5, 3.8), (8.0, 1.8)]);
         }
         Icon::Globe => {
             p.circle_stroke(at(8.0, 8.0), 6.0 * u, stroke);

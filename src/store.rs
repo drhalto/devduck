@@ -28,11 +28,44 @@ pub struct Settings {
     pub probe_http: bool,
     pub confirm_stop: bool,
     pub view: ViewMode,
+    pub sidebar: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { interval_secs: 2, editor: Editor::VsCode, probe_http: true, confirm_stop: true, view: ViewMode::Cards }
+        Settings { interval_secs: 2, editor: Editor::VsCode, probe_http: true, confirm_stop: true, view: ViewMode::Cards, sidebar: true }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+pub enum FavoriteKind {
+    #[default]
+    Project,
+    Container,
+}
+
+/// A starred dev project or Docker container: always listed in the sidebar, running or
+/// not, with what it takes to start it again. Never pruned.
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[serde(default)]
+pub struct Favorite {
+    pub kind: FavoriteKind,
+    /// The project folder, or the container name.
+    pub target: String,
+    pub name: String,
+    pub framework: Option<String>,
+    pub ports: Vec<u16>,
+    /// Projects: the root command line and working directory last seen running.
+    pub command: String,
+    pub cwd: Option<String>,
+}
+
+impl Favorite {
+    pub fn id(&self) -> String {
+        match self.kind {
+            FavoriteKind::Project => format!("project:{}", self.target.to_lowercase()),
+            FavoriteKind::Container => format!("container:{}", self.target),
+        }
     }
 }
 
@@ -59,6 +92,7 @@ pub struct Recent {
 pub struct State {
     pub settings: Settings,
     pub recent: Vec<Recent>,
+    pub favorites: Vec<Favorite>,
 }
 
 pub fn now_unix() -> u64 {
