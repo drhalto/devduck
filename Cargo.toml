@@ -1,0 +1,38 @@
+[package]
+name = "dev-ports"
+version = "2.0.0"
+edition = "2024"
+description = "See what's listening on your local ports, grouped by project, and stop it cleanly."
+license = "MIT"
+repository = "https://github.com/drhalto/dev-ports"
+publish = false
+
+[lib]
+name = "dev_ports"
+path = "src/lib.rs"
+
+# Console CLI: `devports list`, `devports who 3000`... With no arguments it opens the window.
+[[bin]]
+name = "devports"
+path = "src/main.rs"
+
+# The window (GUI subsystem). This is the one to pin to the taskbar.
+[[bin]]
+name = "devports-app"
+path = "src/bin/app.rs"
+
+[dependencies]
+eframe = { version = "0.36", default-features = false, features = ["glow", "accesskit", "default_fonts"] }
+egui_extras = { version = "0.36", default-features = false }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+qrcodegen = "1.8"
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

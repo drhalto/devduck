@@ -1,67 +1,89 @@
 # Dev Ports
 
-A single-file Windows tool that shows what's **listening on your local ports**, grouped by project, and lets you **stop it cleanly** — the whole process tree, not just the one PID.
-
-If you run a lot of dev servers, you know the pain: something's holding port 3000, `netstat` gives you a bare PID, and killing it leaves orphaned `node` children behind. Dev Ports figures out which *project* a listener belongs to, shows it in a tidy grid, and stops the entire tree with one click.
+A Windows dashboard for the dev servers on your machine. It shows **what's listening on your local ports**, grouped by project, says what each one is and whether it's answering, and lets you **open, restart or stop it cleanly**: the whole process tree, not just one PID.
 
 ![Dev Ports](screenshot.png)
 
+If you run a lot of dev servers, you know the pain: something's holding port 3000, `netstat` gives you a bare PID, and killing it leaves orphaned `node` children behind. Dev Ports works out which *project* a listener belongs to, shows it as a card, and handles the rest.
+
 ## What it does
 
-- **Groups listeners by project.** It walks each process's command line and parent chain to find the project folder (the directory above `node_modules`), so five ports from one `next dev` show up as one row, not five.
-- **Detects Docker containers.** Ports published by containers are labelled with the container name and image (requires Docker Desktop running).
-- **Classifies each row** as `dev`, `docker`, `app`, or `system`, and colour-codes them. System listeners are hidden by default (toggle with the **System** checkbox).
-- **Shows uptime and memory** per app so you can spot the runaway process.
-- **One-click actions:** open in browser (or double-click a row), copy the `localhost` URL(s), open the project folder, or **Stop** — which kills the full process tree via `taskkill /T`, or `docker stop` for containers.
-- **Live filter** box across app name, port, process, and folder.
-- **Auto-refreshes** when you switch back to the window (F5 also works).
-- **Never freezes**: scans run in a background runspace and read the TCP table straight from `iphlpapi` — a full refresh is ~1s and the UI stays responsive throughout.
+- **One card per dev server.** Listeners are grouped by project folder (walking the process tree past npm/vite/next runners), so five ports from one `next dev` are one card, not five.
+- **Says what it is.** Framework badge (Next.js, Vite, Remotion, Astro, Storybook, Uvicorn, Django...) from the command line and `package.json`; the page's real `<title>`; HTTP status and latency; which port is the web port and which are internal.
+- **Live.** Rescans every 2 s (adjustable, or pause), with CPU and memory sparklines. Memory and CPU cover the **whole process tree**, which is what stopping it would free.
+- **Restart and Start.** Restart stops the tree and re-runs the exact command in the same folder. Stopped projects stay under *Recently stopped* with a **Start** button. Servers Dev Ports starts have their output captured, and the drawer shows their logs.
+- **Detail drawer.** Ports with bind addresses (localhost-only vs. reachable on your LAN), a **QR code** to open it on your phone, the process tree, the command line and working directory, plus logs (Docker logs for containers).
+- **Docker aware.** Ports published by containers show as container cards (name, image, uptime). Stop is `docker stop`, Restart is `docker restart`.
+- **Jump-offs:** open in browser, copy URL, open the folder, open it in VS Code or Cursor, open a terminal there.
+- **A real CLI** for scripts and agents: `devports who 3000`, `devports kill 3000`, `devports list --json`.
 
-## Requirements
+![List view](screenshot-list.png)
 
-- Windows 10/11 with PowerShell (Windows PowerShell 5.1 or PowerShell 7+).
-- Docker Desktop is optional — container detection is skipped if it isn't running.
-- No dependencies, no install, no admin required (though admin lets you stop processes owned by other users).
+## Install
 
-## Usage
+Requires Windows 10/11 and Rust 1.88+ (MSVC toolchain). From the repo:
 
 ```powershell
-# Launch the GUI
-powershell -ExecutionPolicy Bypass -File .\DevPorts.ps1
-
-# Or a quick text scan in the terminal (no window), handy for scripting/CI
-powershell -ExecutionPolicy Bypass -File .\DevPorts.ps1 -Smoke
+.\scripts\install.ps1
 ```
 
-You'll probably want a shortcut. Create one pointing at:
+That builds the release, copies the two programs to `~\.local\bin` (pass `-Dest` to pick another folder on your `PATH`) and adds a **Dev Ports** Start menu shortcut. Re-run it after pulling changes.
 
-```
-powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\path\to\DevPorts.ps1"
+| | |
+|---|---|
+| `devports-app.exe` | The window. Open it once and right-click its taskbar icon, **Pin to taskbar**. |
+| `devports.exe` | The command line. With no arguments it opens the window. |
+
+There's nothing to configure, and admin rights aren't required (though admin lets you stop processes owned by other users).
+
+## Command line
+
+```text
+devports                 open the window
+devports list            every listener as a table   (alias: --smoke)
+devports list --json     ...as JSON, with bind addresses, framework, process count, cwd
+devports who 3000        what's on a port: app, folder, process tree, command
+devports kill 3000       stop whatever owns a port (whole tree, or docker stop)
+devports open 3000       open http://localhost:3000
 ```
 
-Pin that to your taskbar and you've got a one-click port dashboard.
+`kill` won't touch Windows system processes. Exit codes: `0` done, `1` nothing on that port (or the stop failed), `2` refused or bad usage.
+
+## Keyboard
+
+| Key | |
+|---|---|
+| `Ctrl K` / `Ctrl F` | search apps, ports, folders, frameworks and page titles |
+| `↑` `↓` | move between servers (opens the drawer) |
+| `Enter` | open the selected server in the browser |
+| `Del` | stop the selected server |
+| `F5` / `Ctrl R` | refresh now |
+| `Esc` | clear search, then close the drawer |
 
 ## How the grouping works
 
-For each listening TCP connection, Dev Ports:
+For each listening TCP socket, Dev Ports:
 
 1. Looks up the owning process and its command line.
-2. Finds the project directory — the path segment before `\node_modules\`, or the first folder under your user profile that isn't `AppData`/an executable.
-3. Walks *up* the parent process chain (up to 8 levels) while the parent is still part of the same project or is a known dev runner (`npm`, `pnpm`, `yarn`, `vite`, `next`, `turbo`, `nodemon`, `dotnet watch`, `uvicorn`, `flask`, …), stopping at shells, editors, and other "never kill" roots.
+2. Finds the project directory: the path segment before `\node_modules\`, or else the first folder under your user profile that isn't `AppData` or an executable.
+3. Walks *up* the parent chain (up to 8 levels) while the parent is part of the same project or is a known dev runner (`npm`, `pnpm`, `yarn`, `vite`, `next`, `turbo`, `nodemon`, `dotnet watch`, `uvicorn`, `flask`...), stopping at shells, editors and other "never kill" roots.
 
-The result is the *root* process for a project, so stopping it takes the whole dev server down at once.
+That root is what Stop kills (`taskkill /T`) and what Restart re-runs. These rules are carried over unchanged from the original PowerShell version (v1, in the git history), and the scan was checked against its output row for row.
 
-## Safety
+## Safety and privacy
 
-- A confirmation dialog names the app, the process, and the ports before anything is killed.
-- Windows kernel listeners (PID ≤ 4) and a curated "never kill" list (Explorer, terminals, VS Code, Cursor, Visual Studio, core Windows services) are protected from being walked up into or terminated.
-- System-classified rows get an extra warning in the confirm dialog.
+- A confirmation names the app, the process and how many child processes will end (you can turn it off in Settings).
+- Windows kernel listeners and a curated "never kill" list (Explorer, terminals, VS Code, Cursor, Visual Studio, core Windows services) are never walked into or terminated. The CLI refuses system processes outright.
+- Restart and Start only ever run a command Dev Ports saw running from that folder.
+- HTTP checks: Dev Ports sends one `GET /` to each **dev server** port when it first appears, and again when you open its drawer or click Re-check. It never probes containers, apps, system services or internal (49152+) ports. You can turn this off in Settings.
+- State (settings, recently stopped projects) lives in `%APPDATA%\DevPorts\state.json`; logs of servers it starts are in `%APPDATA%\DevPorts\logs`. Nothing leaves your machine.
 
-## Notes
+## Under the hood
 
-- Colours are the [Catppuccin Macchiato](https://github.com/catppuccin/catppuccin) palette.
-- Everything is in one `.ps1` file — read it, tweak it, no build step.
+Rust, [egui](https://github.com/emilk/egui)/eframe for the window, and direct Win32 calls for everything else: one `NtQuerySystemInformation` call for the process table, `GetExtendedTcpTable` for listeners, process command lines and working directories read without WMI. A full scan takes about 10 ms; the PowerShell version took about a second.
+
+v1 was a single-file PowerShell/WPF script (`DevPorts.ps1`); it's in the git history if you want it.
 
 ## License
 
-MIT — do whatever you like with it.
+MIT. Fonts: [Geist and Geist Mono](https://vercel.com/font) by Vercel, SIL Open Font License (see `assets/fonts/OFL.txt`).
