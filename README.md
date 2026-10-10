@@ -92,4 +92,4 @@ DevDuck was called Dev Ports until v2.1 (its data folder moves over automaticall
 
 ## License
 
-MIT. Mascot drawn with gpt-image-2. Fonts: [Geist and Geist Mono](https://vercel.com/font) by Vercel, SIL Open Font License (see `assets/fonts/OFL.txt`).
+MIT. The bundled Geist fonts are under the SIL Open Font License (`assets/fonts/OFL.txt`).
