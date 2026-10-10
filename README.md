@@ -2,7 +2,7 @@
 
 <h1 align="center">DevDuck</h1>
 
-<p align="center"><b>Every dev server on your PC, grouped by project.</b><br><a href="https://drhalto.github.io/devduck/">drhalto.github.io/devduck</a></p>
+<p align="center"><b>Every dev server on your PC, grouped by project.</b><br><a href="https://devduck.drhalto.com/">devduck.drhalto.com</a></p>
 
 A Windows dashboard for the dev servers on your machine. It shows **what's listening on your local ports**, grouped by project, says what each one is and whether it's answering, and lets you **open, restart or stop it cleanly**: the whole process tree, not just one PID.
 
