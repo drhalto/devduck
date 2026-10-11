@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/img/devduck.png" alt="DevDuck, a cartoon duck holding a network cable plug" width="220"></p>
+<p align="center"><img src="docs/img/devduck.svg" alt="DevDuck, a cartoon duck holding a network cable plug" width="220"></p>
 
 <h1 align="center">DevDuck</h1>
 

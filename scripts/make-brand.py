@@ -3,6 +3,8 @@
 Sources (transparent, 1024x1024, generated with gpt-image-2 and chroma-keyed):
   assets/brand/devduck-1024.png         the duck holding a network plug (main mascot)
   assets/brand/devduck-thumbs-1024.png  the duck with headphones, thumbs up
+  assets/brand/devduck.svg              the vector mascot (exported from devduck.vectorcraft
+                                        in VectorCraft), copied to docs/img for the site
 
 Writes:
   assets/brand/icon.png        1024 app icon: duck head on a blue rounded tile
@@ -13,6 +15,7 @@ Writes:
 
 usage: python scripts/make-brand.py   (needs Pillow)
 """
+import shutil
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -73,7 +76,7 @@ def trimmed(img, width):
     return img.resize((width, h), Image.LANCZOS)
 
 
-trimmed(duck, 640).save(IMG / "devduck.png", optimize=True)
+shutil.copyfile(BRAND / "devduck.svg", IMG / "devduck.svg")
 trimmed(thumbs, 360).save(IMG / "devduck-thumbs.png", optimize=True)
 
 # Social card (1200x630) for link previews.
