@@ -12,23 +12,23 @@ If you run a lot of dev servers, you know the pain: something's holding port 300
 
 ## What it does
 
-- **Every project, running or not.** DevDuck looks through your home folder (or the folders you pick in Settings) for `package.json`, `deno.json` and `manage.py`, and lists each project that has something to serve. Running ones are cards with their main action up front (**Open :3000**, or **Restart** when it's throwing 500s); the rest are rows with a **Start** button and a picker for any other script (`dev`, `storybook`, `preview`...). It uses the right package manager (npm, pnpm, yarn, bun) from the lockfile.
+- **Every project, running or not.** DevDuck looks through your home folder (or the folders you pick in Settings) for `package.json`, `deno.json` and `manage.py`, and lists each project that has something to serve. Running ones are cards that say what they're doing (*Ready · sends you to /login*) with their main action up front (**Open :3000**, or **Restart** when it's throwing 500s). Below them, *Pick up where you left off* holds what you ran last (crashes first), then a quiet list of everything else, with a **Start** button and a picker for any other script (`dev`, `storybook`, `preview`...). It uses the right package manager (npm, pnpm, yarn, bun) from the lockfile.
 - **Where each project stands in git.** Branch, uncommitted changes, commits to push or pull, and the last commit, read locally with the git CLI (no account needed), plus an Open on GitHub button. Projects show their own icon when they have one.
 - **Output you can see.** Anything DevDuck starts runs with its output captured: the card shows the last line while it boots, and the project's page has a live **Output** tab. If it crashes, the card turns red with the exit code and the page shows the last lines.
-- **Port conflicts fixed for you.** If something already holds the port a project wants, Start says so and offers to stop that first.
+- **Port clashes solved.** If something already holds the port a project wants, Start offers the next free port (passed as `--port`, runserver's argument and `PORT`), or stopping whatever holds it.
 - **Stacks.** Group the projects and containers you run together (the app, its Postgres, its Redis) and start or stop them with one click. Containers start first.
 - **A command palette.** `Ctrl K`, type a few letters: *start docs*, *stop acme*, *run storybook*, *open 5173*, *what's on 3000*.
 - **One card per dev server.** Listeners are grouped by project folder (walking the process tree past npm/vite/next runners), so five ports from one `next dev` are one card, not five.
 - **Says what it is.** Framework badge (Next.js, Vite, Remotion, Astro, Storybook, Uvicorn, Django...) from the command line and `package.json`; the page's real `<title>`; HTTP status and latency; which port is the web port and which are internal.
 - **Live.** Rescans every 2 s (adjustable, or pause), with CPU and memory sparklines. Memory and CPU cover the **whole process tree**, which is what stopping it would free.
-- **Restart and Start.** Restart stops the tree and re-runs the exact command in the same folder. Stopped projects stay under *Recently stopped* with a **Start** button. Servers DevDuck starts have their output captured, and the drawer shows their logs.
-- **Favorites in a sidebar.** Star a dev project or container and it stays in the sidebar whether it's running or not: a live status dot while it's up, a **▶** to start it when it's down (dev servers re-run their remembered command; containers get `docker start`), **Start all** for the stopped ones, and a right-click menu. The sidebar also holds the All / Dev / Docker / Apps / Windows views; hide it with `Ctrl B`.
+- **Restart.** Restart stops the tree and re-runs the same script or exact command in the same folder, on the same port.
+- **Favorites in a sidebar.** Star a dev project or container and it stays in the sidebar whether it's running or not: a live status dot while it's up, a **▶** to start it when it's down (dev servers re-run their remembered command; containers get `docker start`), **Start all** for the stopped ones, and a right-click menu. The sidebar also switches between Projects and Ports (whose All / Containers / Apps / Windows lenses are tabs), and lists your stacks; hide it with `Ctrl B`.
 - **A page per project** with Overview (status, scripts, stacks), Output, and Details: ports with bind addresses (localhost-only vs. reachable on your LAN), a **QR code** to open it on your phone, the process tree, the command line and working directory, plus logs (Docker logs for containers).
 - **Docker aware.** Ports published by containers show as container cards (name, image, uptime). Stop is `docker stop`, Restart is `docker restart`.
 - **Jump-offs:** open in browser, copy URL, open the folder, open it in VS Code or Cursor, open a terminal there.
 - **A real CLI** for scripts and agents: `devduck who 3000`, `devduck kill 3000`, `devduck list --json`.
 
-![List view](screenshot-list.png)
+![A project's page](screenshot-page.png)
 
 ## Install
 

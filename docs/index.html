@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DevDuck — every dev server on your PC</title>
-<meta name="description" content="DevDuck is a free Windows app and CLI that shows every dev server on your PC, grouped by project, with one click to open, restart or stop the whole process tree.">
+<title>DevDuck — start, stop and open every project on your PC</title>
+<meta name="description" content="DevDuck is a free Windows app and CLI that finds your projects and starts them with one click, shows their output and git status, and says what's on every port, with one click to open, restart or stop the whole process tree.">
 <meta name="theme-color" content="#0D0F14">
 <meta name="color-scheme" content="dark">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:type" content="website">
-<meta property="og:title" content="DevDuck — every dev server on your PC">
-<meta property="og:description" content="See what's on every port, grouped by project. Open, restart or stop the whole process tree. Free for Windows.">
+<meta property="og:title" content="DevDuck — start, stop and open every project on your PC">
+<meta property="og:description" content="Find your projects and start them with one click. See their output, their git status and what's on every port. Free for Windows.">
 <meta property="og:url" content="https://devduck.drhalto.com/">
 <meta property="og:image" content="https://devduck.drhalto.com/img/og.png">
 <meta property="og:image:width" content="1200">
@@ -223,8 +223,8 @@ kbd { font-size: 13px; padding: 1px 7px; border: 1px solid var(--border-hi); bor
     <div class="wrap hero-grid">
       <div>
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Free for Windows 10 &amp; 11</span>
-        <h1>Every dev server on your PC. <span class="quack">Sorted.</span></h1>
-        <p class="lede">DevDuck shows what's listening on every port, grouped by project, and says what each one is. One click opens, restarts or stops the whole thing.</p>
+        <h1>Every project on your PC. <span class="quack">One click away.</span></h1>
+        <p class="lede">DevDuck finds your projects and their scripts, starts any of them with one click, and tells you what each one is doing. It also knows what's on every port, so one click opens, restarts or stops the whole thing.</p>
         <div class="ctas">
           <a class="btn btn-primary" href="#install">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 3v10m0 0l-4-4m4 4l4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -248,9 +248,9 @@ kbd { font-size: 13px; padding: 1px 7px; border: 1px solid var(--border-hi); bor
     <div class="wrap">
       <figure class="shot" style="margin-top:56px">
         <div class="bar" aria-hidden="true"><img src="favicon.png" alt="">DevDuck</div>
-        <img src="img/screenshot.png" alt="The DevDuck window: a sidebar with views and favorites, cards for each dev server showing its framework, ports, page title, HTTP status, memory, CPU and uptime, and a detail drawer with actions, ports and a QR code." width="1770" height="1140">
+        <img src="img/screenshot.png" alt="The DevDuck window: running projects as cards that say what each is doing (Ready, its page title and the last line it printed) with Open, restart, stop and output buttons; below, tiles to pick up where you left off, including one that crashed; a sidebar with Projects, Ports, a stack and favorites." width="1770" height="1140">
       </figure>
-      <p class="caption">Demo data. Every card is a project; the drawer has its ports, process tree, command, logs and a QR code for your phone.</p>
+      <p class="caption">Demo data. Running projects up top, then the ones you're likely to start next, then everything else.</p>
     </div>
   </div>
 
@@ -284,58 +284,69 @@ Stopped acme-storefront (6 processes); freed 3000</pre>
   <section id="features" aria-labelledby="features-h">
     <div class="wrap">
       <p class="kicker">What it does</p>
-      <h2 id="features-h">A dashboard for the servers you forgot you started</h2>
-      <p class="sub">It refreshes every couple of seconds and works with whatever you already run: Next.js, Vite, Remotion, Astro, Storybook, Python, .NET or Docker.</p>
+      <h2 id="features-h">Start things. See what they're doing.</h2>
+      <p class="sub">It works with whatever you already run: Next.js, Vite, Remotion, Astro, Storybook, Django, Python, .NET or Docker.</p>
       <div class="features">
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="2.5" y="11" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg></div>
-          <h3>Grouped by project, not by PID</h3>
-          <p>DevDuck walks each process tree past <code>npm</code>, <code>vite</code>, <code>next</code>, <code>uvicorn</code> and friends to find the project folder that owns a port, so five ports from one <code>next dev</code> show up as one card.</p>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5v11l9-5.5z"/></svg></div>
+          <h3>Every project, one click to start</h3>
+          <p>DevDuck finds the <code>package.json</code>, <code>deno.json</code> and <code>manage.py</code> projects in your folders and lists their scripts. <strong>Start</strong> runs the dev script with the package manager your lockfile names; the arrow beside it runs any other.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2.5" stroke-linecap="round"/></svg></div>
-          <h3>Knows what it is</h3>
-          <p>Framework badge, the page's real <code>&lt;title&gt;</code>, HTTP status and response time, and which port is the web port.</p>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5.5h13M3.5 10h9M3.5 14.5h6"/></svg></div>
+          <h3>Says what it's doing</h3>
+          <p>Not <em>HTTP 307</em> but <em>Ready · sends you to /login</em>. Each running project shows its page's real <code>&lt;title&gt;</code> and the last line its server printed.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="5" y="5" width="10" height="10" rx="2"/></svg></div>
-          <h3>Stops the whole tree</h3>
-          <p>No orphaned workers. The confirmation says exactly what will end, and Windows system processes are off-limits.</p>
+          <div class="ico" aria-hidden="true" style="color:var(--amber)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5l7 12.5H3z"/><path d="M10 8.5v3.5M10 14.2v.1"/></svg></div>
+          <h3>Crashes you can see</h3>
+          <p>Everything DevDuck starts has its output captured. If it dies, its card turns red with the exit code and its page shows the last lines, so you know why before you open a terminal.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M15.5 7.5A6 6 0 104.5 12"/><path d="M15.8 3.5v4h-4"/></svg></div>
-          <h3>Restart with logs</h3>
-          <p>Restart re-runs the exact command in the same folder and captures its output, so the drawer can show you the logs.</p>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="6" height="6" rx="1.5"/><rect x="11" y="7" width="6" height="6" rx="1.5"/><path d="M9 10h2"/></svg></div>
+          <h3>Port clashes, solved</h3>
+          <p>Something already on <code>:3000</code>? Start offers the next free port and passes it the way your framework expects, or stops whatever holds it first. Stopping always ends the whole process tree.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true" style="color:var(--duck)"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.2l2.3 4.9 5.3.6-3.9 3.7 1 5.3L10 14.1l-4.7 2.6 1-5.3L2.4 7.7l5.3-.6z"/></svg></div>
-          <h3>Favorites you can start</h3>
-          <p>Star a project or container and it stays in the sidebar even when it's stopped. Press ▶, or <em>Start all</em> to bring your whole stack up.</p>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l7 3.5-7 3.5-7-3.5z"/><path d="M3 10l7 3.5 7-3.5M3 13.5l7 3.5 7-3.5"/></svg></div>
+          <h3>Stacks</h3>
+          <p>Group the things you run together (the app, its Postgres, its Redis) and start or stop them with one click. Containers come up first.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14l4-5 3.5 3 3.5-6 4 4"/></svg></div>
-          <h3>Live, honest stats</h3>
-          <p>CPU and memory for the whole process tree, with sparklines. That's what stopping it would actually free.</p>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="1.8"/><circle cx="6" cy="15" r="1.8"/><circle cx="14" cy="7.5" r="1.8"/><path d="M6 6.8v6.4M14 9.3c0 3-4 2.5-8 4"/></svg></div>
+          <h3>Git at a glance</h3>
+          <p>Branch, uncommitted changes, commits to push or pull, and the last commit, read locally with <code>git</code>. No account. <strong>Open on GitHub</strong> is one click from the project's page.</p>
         </article>
         <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2" stroke-linecap="round"/></svg></div>
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6.5a2 2 0 1 0-2 2h10a2 2 0 1 0-2-2v7a2 2 0 1 0 2-2H5a2 2 0 1 0 2 2z"/></svg></div>
+          <h3>Ctrl K for anything</h3>
+          <p>Type a few letters: <em>start docs</em>, <em>stop acme</em>, <em>run storybook</em>, <em>open 5173</em>, <em>what's on 3000</em>.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="2.5" y="11" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg></div>
+          <h3>Every port, explained</h3>
+          <p>The Ports view shows every listener grouped by project folder, so five ports from one <code>next dev</code> are one card, with live CPU and memory for the whole tree. Docker containers get their own cards.</p>
+        </article>
+        <article class="card feature">
+          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9.5 14.5h1"/></svg></div>
           <h3>Test on your phone</h3>
           <p>See which servers your LAN can reach and scan a QR code to open one on your phone. If it's localhost-only, DevDuck tells you the flag to fix that.</p>
-        </article>
-        <article class="card feature">
-          <div class="ico" aria-hidden="true" style="color:var(--cyan)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M10 2l7 3.8v8.4L10 18l-7-3.8V5.8z"/><path d="M3 5.8L10 10l7-4.2M10 10v8"/></svg></div>
-          <h3>Docker aware</h3>
-          <p>Containers that publish ports get their own cards with image, uptime and <code>docker logs</code>. Stop, restart and start work too.</p>
-        </article>
-        <article class="card feature">
-          <div class="ico" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6L3 10l3.5 4M13.5 6L17 10l-3.5 4M11.5 4l-3 12"/></svg></div>
-          <h3>Jump straight in</h3>
-          <p>Open in the browser, copy the URL, or open the folder in VS Code, Cursor or a terminal.</p>
         </article>
       </div>
     </div>
   </section>
 
+  <section aria-labelledby="page-h">
+    <div class="wrap">
+      <p class="kicker">A page per project</p>
+      <h2 id="page-h">Everything about one project, in one place</h2>
+      <p class="sub">Its status, scripts, stacks and git on Overview; live output on Output; ports, process tree, command and a QR code on Details.</p>
+      <figure class="shot" style="margin-top:32px">
+        <div class="bar" aria-hidden="true"><img src="favicon.png" alt="">DevDuck</div>
+        <img src="img/screenshot-page.png" alt="A project's page in DevDuck: Open, Restart and Stop buttons, its HTTP status and page title, a Git section showing the main branch with 3 uncommitted files and 1 commit to push, the last commit and an Open on GitHub button, then its scripts." width="1770" height="1140" loading="lazy">
+      </figure>
+    </div>
+  </section>
   <section id="cli" aria-labelledby="cli-h">
     <div class="wrap">
       <p class="kicker">Command line</p>
@@ -410,10 +421,11 @@ cd devduck
         <table class="cmds" style="margin-top:10px">
           <caption class="visually-hidden">Keyboard shortcuts</caption>
           <tbody>
-            <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Search apps, ports, folders, frameworks and page titles</td></tr>
-            <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move between servers</td></tr>
-            <tr><td><kbd>Enter</kbd></td><td>Open in the browser</td></tr>
-            <tr><td><kbd>Del</kbd></td><td>Stop the selected server</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Command palette: start, stop, open or run anything by name</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>F</kbd></td><td>Filter projects, ports, folders, branches and page titles</td></tr>
+            <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move between projects</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Start the selected project, or open it if it's running</td></tr>
+            <tr><td><kbd>Del</kbd></td><td>Stop the selected project</td></tr>
             <tr><td><kbd>Ctrl</kbd> <kbd>B</kbd></td><td>Show or hide the sidebar</td></tr>
             <tr><td><kbd>F5</kbd></td><td>Refresh now</td></tr>
           </tbody>
@@ -427,13 +439,13 @@ cd devduck
       <div>
         <p class="kicker">Safety &amp; privacy</p>
         <h2 id="privacy-h">It only touches what you point at</h2>
-        <p class="sub">DevDuck runs entirely on your machine. There's no account, no telemetry and no network calls beyond your own <code>localhost</code>.</p>
+        <p class="sub">DevDuck runs entirely on your machine. There's no account, no telemetry and no network calls beyond your own <code>localhost</code>. Git info comes from the <code>git</code> on your PC, and it never fetches or pushes.</p>
       </div>
       <ul>
         <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Never walks into shells, editors or Windows services.</strong> Explorer, terminals, VS Code, Cursor and core services are protected, and system processes are never killed from the CLI.</span></li>
-        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Only re-runs commands it saw.</strong> Restart, Start and favorites use the command DevDuck saw running from that folder, nothing else.</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Only runs what you could run yourself.</strong> Start runs a script from the project's own <code>package.json</code>, <code>deno.json</code> or <code>manage.py</code>, or the command DevDuck saw running from that folder. Nothing runs until you press Start.</span></li>
         <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>One polite HTTP check.</strong> A single <code>GET /</code> to each dev-server port when it appears, and again when you ask. It never probes databases, apps, containers or internal ports, and you can turn it off.</span></li>
-        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Your data stays put.</strong> Settings, favorites and logs live in <code>%APPDATA%\DevDuck</code>.</span></li>
+        <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>Your data stays put.</strong> It reads project files only from the folders you choose (your home folder by default). Settings, favorites, stacks and logs live in <code>%APPDATA%\DevDuck</code>.</span></li>
       </ul>
     </div>
   </section>
@@ -444,7 +456,7 @@ cd devduck
         <img src="img/devduck-thumbs.png" alt="DevDuck wearing headphones and giving a thumbs up" width="360" height="526">
         <div>
           <h2 id="why-h">Why a duck?</h2>
-          <p>Rubber-duck debugging, but this duck actually knows what's on port 3000. It also beats calling the app "Port Listener Utility".</p>
+          <p>Rubber-duck debugging, but this duck actually knows what's on port 3000, and can start the thing you meant to run. It also beats calling the app "Port Listener Utility".</p>
           <p style="margin-top:18px"><a class="btn btn-primary" href="https://github.com/drhalto/devduck">Get DevDuck on GitHub</a></p>
         </div>
       </div>

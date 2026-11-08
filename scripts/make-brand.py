@@ -93,7 +93,7 @@ body = ImageFont.truetype(str(fonts / "Geist-Regular.ttf"), 36)
 mono = ImageFont.truetype(str(fonts / "GeistMono-Medium.ttf"), 30)
 d = ImageDraw.Draw(card)
 d.text((80, 150), "DevDuck", font=title, fill=(0xE7, 0xEA, 0xF3))
-for i, line in enumerate(["Every dev server on your PC,", "grouped by project.", "Open it, restart it, stop it."]):
+for i, line in enumerate(["Every project on your PC,", "one click from running.", "Every port, explained."]):
     d.text((84, 282 + i * 46), line, font=body, fill=(0xA4, 0xAC, 0xC2))
 d.rounded_rectangle((84, 450, 470, 506), radius=12, fill=(0x1A, 0x1E, 0x28), outline=(0x33, 0x3A, 0x4B), width=2)
 d.text((106, 461), "> devduck who 3000", font=mono, fill=(0xFF, 0xD6, 0x0A))
