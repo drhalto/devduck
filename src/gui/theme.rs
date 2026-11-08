@@ -99,7 +99,13 @@ pub fn install_fonts(ctx: &egui::Context) {
     for (name, bytes) in faces {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
     }
-    let fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let mut fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    // Dev servers print ✓ ✔ ➜ ▲ ⚠ and friends; Segoe UI Symbol has them.
+    let windir = std::env::var("WINDIR").unwrap_or_else(|_| r"C:\Windows".into());
+    if let Ok(bytes) = std::fs::read(std::path::Path::new(&windir).join("Fonts").join("seguisym.ttf")) {
+        fonts.font_data.insert("symbols".into(), Arc::new(FontData::from_owned(bytes)));
+        fallback.push("symbols".into());
+    }
     let with_fallback = |first: &str| std::iter::once(first.to_string()).chain(fallback.iter().cloned()).collect::<Vec<_>>();
     fonts.families.insert(FontFamily::Proportional, with_fallback("geist"));
     fonts.families.insert(family("medium"), with_fallback("geist-medium"));

@@ -371,7 +371,7 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Option<String> 
 }
 
 /// Best guess at what a dev server is, from its command lines, then its package.json.
-fn detect_framework(cmds: &str, exe: &str, folder: &str, package_deps: Option<&BTreeSet<String>>) -> Option<String> {
+pub(crate) fn detect_framework(cmds: &str, exe: &str, folder: &str, package_deps: Option<&BTreeSet<String>>) -> Option<String> {
     let c = cmds.to_ascii_lowercase().replace('/', "\\");
     let has = |s: &str| c.contains(s);
     let by_cmd = if has("storybook") {

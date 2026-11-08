@@ -29,11 +29,13 @@ pub struct Settings {
     pub confirm_stop: bool,
     pub view: ViewMode,
     pub sidebar: bool,
+    /// Folders searched for projects. Empty means your home folder.
+    pub project_roots: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { interval_secs: 2, editor: Editor::VsCode, probe_http: true, confirm_stop: true, view: ViewMode::Cards, sidebar: true }
+        Settings { interval_secs: 2, editor: Editor::VsCode, probe_http: true, confirm_stop: true, view: ViewMode::Cards, sidebar: true, project_roots: Vec::new() }
     }
 }
 
@@ -85,6 +87,34 @@ pub struct Recent {
     /// Set when DevDuck itself started it: the pid and where its output goes.
     pub launched_pid: Option<u32>,
     pub log: Option<String>,
+    /// The script DevDuck last ran here ("dev"), so Start runs it again.
+    pub script: Option<String>,
+}
+
+/// Projects and containers you start and stop together ("Acme": the storefront, its
+/// Postgres and Redis). Containers start first and stop last.
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[serde(default)]
+pub struct Stack {
+    pub name: String,
+    pub members: Vec<Member>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct Member {
+    pub kind: FavoriteKind,
+    /// The project folder, or the container name.
+    pub target: String,
+}
+
+impl Member {
+    pub fn is(&self, kind: FavoriteKind, target: &str) -> bool {
+        self.kind == kind && match kind {
+            FavoriteKind::Project => self.target.eq_ignore_ascii_case(target),
+            FavoriteKind::Container => self.target == target,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
@@ -93,6 +123,7 @@ pub struct State {
     pub settings: Settings,
     pub recent: Vec<Recent>,
     pub favorites: Vec<Favorite>,
+    pub stacks: Vec<Stack>,
 }
 
 pub fn now_unix() -> u64 {
@@ -143,12 +174,16 @@ impl State {
         }
     }
 
-    /// Drop projects not seen for two weeks; keep at most 40.
+    /// Drop projects not seen for 60 days; keep at most 60.
     pub fn prune(&mut self) {
-        let cutoff = now_unix().saturating_sub(14 * 86_400);
+        let cutoff = now_unix().saturating_sub(60 * 86_400);
         self.recent.retain(|r| r.last_seen >= cutoff);
         self.recent.sort_by_key(|r| std::cmp::Reverse(r.last_seen));
-        self.recent.truncate(40);
+        self.recent.truncate(60);
+    }
+
+    pub fn roots(&self) -> Vec<String> {
+        if self.settings.project_roots.is_empty() { crate::projects::default_roots() } else { self.settings.project_roots.clone() }
     }
 
     pub fn recent_mut(&mut self, folder: &str) -> Option<&mut Recent> {

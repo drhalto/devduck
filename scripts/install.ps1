@@ -30,7 +30,7 @@ $shell = New-Object -ComObject WScript.Shell
 $lnk = $shell.CreateShortcut((Join-Path $programs 'DevDuck.lnk'))
 $lnk.TargetPath = Join-Path $Dest 'devduck-app.exe'
 $lnk.WorkingDirectory = $env:USERPROFILE
-$lnk.Description = 'Every dev server on your PC, grouped by project'
+$lnk.Description = 'Start, stop and open every project on your PC'
 $lnk.IconLocation = "$(Join-Path $Dest 'devduck-app.exe'),0"
 $lnk.Save()
 

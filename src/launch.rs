@@ -6,7 +6,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, UdpSocket};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
@@ -78,10 +78,19 @@ pub fn log_path(app: &str) -> PathBuf {
     store::data_dir().join("logs").join(format!("{safe}.log"))
 }
 
-/// Re-run a dev server's root command in its working directory, detached and windowless,
-/// with stdout and stderr going to a log file DevDuck can tail. Returns the new pid.
-pub fn start(app: &str, command: &str, cwd: &str) -> Result<(u32, PathBuf), String> {
-    let (program, args) = split_command(command).ok_or("No command recorded for this project.")?;
+/// Run a command in its working directory, detached and windowless, with stdout and
+/// stderr going to a log file DevDuck can tail. `shell` runs it through `cmd /c` (for
+/// "npm run dev": npm is a .cmd); otherwise it's an exact command line seen running.
+/// `port` goes in the environment as PORT.
+pub fn start(app: &str, command: &str, cwd: &str, shell: bool, port: Option<u16>) -> Result<(Child, PathBuf), String> {
+    let (program, args) = if shell {
+        (std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into()), format!("/d /s /c \"{}\"", command.trim()))
+    } else {
+        split_command(command).ok_or("No command recorded for this project.")?
+    };
+    if command.trim().is_empty() {
+        return Err("No command recorded for this project.".into());
+    }
     if !Path::new(cwd).is_dir() {
         return Err(format!("The folder {cwd} no longer exists."));
     }
@@ -103,12 +112,13 @@ pub fn start(app: &str, command: &str, cwd: &str) -> Result<(u32, PathBuf), Stri
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
+        .envs(port.map(|p| ("PORT", p.to_string())))
         .env("NO_COLOR", "1")
         .env("FORCE_COLOR", "0")
         .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .map_err(|e| format!("Couldn't start {program}: {e}"))?;
-    Ok((child.id(), log))
+    Ok((child, log))
 }
 
 static ANSI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[()][A-Z0-9]").unwrap());
@@ -212,5 +222,40 @@ mod tests {
     fn cleans_terminal_output() {
         let raw = "\x1b[32m✓\x1b[39m Ready in 1.2s\r\nCompiling 10%\rCompiling 100%\n";
         assert_eq!(clean_log(raw), "✓ Ready in 1.2s\nCompiling 100%\n");
+    }
+}
+
+#[cfg(test)]
+mod machine {
+    /// `cargo test -- --ignored --nocapture npm_script`: start an npm script the way the
+    /// Start button does, see it listen, stop its tree, and see the port free again.
+    #[test]
+    #[ignore]
+    fn npm_script_starts_and_stops() {
+        let dir = std::env::temp_dir().join(format!("devduck-npm-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{"name":"devduck-smoke","scripts":{"dev":"node -e \"require('http').createServer((q,s)=>s.end('hi')).listen(45123)\""}}"#,
+        )
+        .unwrap();
+        let (mut child, log) = super::start("devduck-smoke", "npm run dev", &dir.to_string_lossy(), true, None).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut up = false;
+        while std::time::Instant::now() < deadline {
+            if crate::win::tcp_listeners().iter().any(|l| l.port == 45123) {
+                up = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        println!("log:\n{}", super::tail(&log, 4096).unwrap_or_default());
+        assert!(up, "never listened");
+        super::kill_tree(child.id()).unwrap();
+        super::wait_ports_free(&[45123], std::time::Duration::from_secs(5));
+        assert!(!crate::win::tcp_listeners().iter().any(|l| l.port == 45123), "port still held");
+        let status = child.wait().unwrap();
+        println!("exit: {:?}", status.code());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

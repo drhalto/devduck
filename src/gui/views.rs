@@ -10,11 +10,11 @@ use eframe::egui::{
 use super::icons::{self, Icon};
 use super::theme::*;
 use super::widgets::{self, Tone};
-use super::{Action, Chip, DevDuck, Dialog, Health};
+use super::{Action, Chip, DevDuck, Dialog, Health, Tab, container_id, project_id, row_id};
 use crate::launch;
 use crate::probe::Probe;
 use crate::scan::{Exposure, Kind, PortApp, PortInfo};
-use crate::store::{self, Editor, Favorite, FavoriteKind, Recent, ViewMode};
+use crate::store::{self, Editor, Favorite, FavoriteKind, ViewMode};
 
 const CARD_H: f32 = 190.0;
 const CARD_MIN_W: f32 = 300.0;
@@ -28,20 +28,19 @@ pub(crate) struct Visible<'a> {
     docker: Vec<&'a PortApp>,
     apps: Vec<&'a PortApp>,
     system: Vec<&'a PortApp>,
-    recent: Vec<&'a Recent>,
 }
 
 impl Visible<'_> {
     fn is_empty(&self) -> bool {
-        self.dev.is_empty() && self.docker.is_empty() && self.apps.is_empty() && self.system.is_empty() && self.recent.is_empty()
+        self.dev.is_empty() && self.docker.is_empty() && self.apps.is_empty() && self.system.is_empty()
     }
 
     fn keys(&self) -> Vec<String> {
-        self.dev.iter().chain(&self.docker).chain(&self.apps).chain(&self.system).map(|r| r.key.clone()).collect()
+        self.dev.iter().chain(&self.docker).chain(&self.apps).chain(&self.system).map(|r| row_id(r)).collect()
     }
 }
 
-fn health_color(h: Health, kind: Kind) -> (Color32, bool) {
+pub(super) fn health_color(h: Health, kind: Kind) -> (Color32, bool) {
     match h {
         Health::Probing => (TEXT_3, true),
         Health::Ok(..) => (GREEN, false),
@@ -65,7 +64,7 @@ fn exposure_text(p: &PortInfo) -> &'static str {
     }
 }
 
-fn cpu_text(cpu: Option<f32>) -> String {
+pub(super) fn cpu_text(cpu: Option<f32>) -> String {
     match cpu {
         None => "\u{2014}".into(),
         Some(c) if c < 10.0 => format!("{c:.1}%"),
@@ -90,12 +89,12 @@ impl DevDuck {
         let searching = !needle.is_empty();
         let show = |k: Kind| match self.chip {
             Chip::All => k != Kind::System || searching,
-            Chip::Dev => k == Kind::Dev,
             Chip::Docker => k == Kind::Docker,
             Chip::Apps => k == Kind::App,
             Chip::System => k == Kind::System,
+            Chip::Projects | Chip::Stack(_) => false,
         };
-        let mut v = Visible { dev: vec![], docker: vec![], apps: vec![], system: vec![], recent: vec![] };
+        let mut v = Visible { dev: vec![], docker: vec![], apps: vec![], system: vec![] };
         for r in self.rows.iter().filter(|r| show(r.kind) && self.matches(r, &needle)) {
             match r.kind {
                 Kind::Dev => v.dev.push(r),
@@ -103,22 +102,6 @@ impl DevDuck {
                 Kind::App => v.apps.push(r),
                 Kind::System => v.system.push(r),
             }
-        }
-        if matches!(self.chip, Chip::All | Chip::Dev) {
-            let running: Vec<&str> = self.rows.iter().filter(|r| r.kind == Kind::Dev).map(|r| r.folder.as_str()).collect();
-            v.recent = self
-                .state
-                .recent
-                .iter()
-                .filter(|e| !running.iter().any(|f| f.eq_ignore_ascii_case(&e.folder)))
-                .filter(|e| {
-                    needle.is_empty()
-                        || e.app.to_lowercase().contains(&needle)
-                        || e.folder.to_lowercase().contains(&needle)
-                        || e.ports.iter().any(|p| p.to_string().contains(&needle))
-                })
-                .take(8)
-                .collect();
         }
         v
     }
@@ -130,9 +113,10 @@ impl DevDuck {
         let focused = self.ctx.memory(|m| m.focused());
         let in_search = focused == Some(search_id);
         let free = focused.is_none() || in_search;
-        let (find, refresh, esc, down, up, enter, del, sidebar) = self.ctx.input_mut(|i| {
+        let (palette, find, refresh, esc, down, up, enter, del, sidebar) = self.ctx.input_mut(|i| {
             (
-                i.consume_key(Modifiers::COMMAND, Key::K) || i.consume_key(Modifiers::COMMAND, Key::F),
+                i.consume_key(Modifiers::COMMAND, Key::K) || i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::P),
+                i.consume_key(Modifiers::COMMAND, Key::F),
                 i.consume_key(Modifiers::NONE, Key::F5) || i.consume_key(Modifiers::COMMAND, Key::R),
                 i.consume_key(Modifiers::NONE, Key::Escape),
                 free && i.consume_key(Modifiers::NONE, Key::ArrowDown),
@@ -144,6 +128,9 @@ impl DevDuck {
         });
         if sidebar {
             actions.push(Action::ToggleSidebar);
+        }
+        if palette {
+            actions.push(Action::OpenPalette);
         }
         if find {
             self.focus_search = true;
@@ -162,8 +149,15 @@ impl DevDuck {
                 self.search.clear();
             }
         }
+        let keys = || -> Vec<String> {
+            if self.chip.is_projects() {
+                self.project_lists().ids()
+            } else {
+                self.visible().keys()
+            }
+        };
         if down || up {
-            let keys = self.visible().keys();
+            let keys = keys();
             if !keys.is_empty() {
                 let current = self.selected.as_ref().and_then(|k| keys.iter().position(|x| x == k));
                 let next = match (current, down) {
@@ -176,13 +170,15 @@ impl DevDuck {
             }
         }
         if enter {
-            let target = self.selected.clone().or_else(|| self.visible().keys().into_iter().next());
-            if let Some(key) = target {
-                actions.push(Action::OpenMain(key));
+            let target = self.selected.clone().or_else(|| keys().into_iter().next());
+            if let Some(it) = target.and_then(|id| self.item(&id))
+                && let Some(a) = self.primary(&it).action
+            {
+                actions.push(a);
             }
         }
-        if del && let Some(key) = self.selected.clone() {
-            actions.push(Action::AskStop(key));
+        if del && let Some(id) = self.selected.clone() {
+            actions.push(Action::StopItem(id));
         }
     }
 
@@ -191,13 +187,14 @@ impl DevDuck {
     pub(crate) fn draw(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         self.sidebar_panel(ui, actions);
         self.header(ui, actions);
-        if self.drawer && self.selected.as_ref().is_some_and(|k| self.row(k).is_some()) {
-            self.drawer_panel(ui, actions);
+        if self.drawer && self.selected.as_ref().is_some_and(|k| self.item(k).is_some()) {
+            self.item_drawer(ui, actions);
         }
         egui::CentralPanel::default()
             .frame(Frame::new().fill(BG).inner_margin(Margin { left: 22, right: 22, top: 4, bottom: 0 }))
-            .show(ui, |ui| self.body(ui, actions));
+            .show(ui, |ui| if self.chip.is_projects() { self.projects_body(ui, actions) } else { self.body(ui, actions) });
         self.dialogs(actions);
+        self.palette_ui(actions);
         self.toasts_area();
     }
 
@@ -236,9 +233,10 @@ impl DevDuck {
                 }
                 x = refresh.left() - 8.0;
                 let live_rect = self.live_pill(ui, &p, pos2(x, r1.center().y), actions);
+                let cmd_rect = self.palette_button(ui, &p, pos2(live_rect.left() - 10.0, r1.center().y), actions);
 
                 let summary = self.summary();
-                widgets::text(&p, pos2(title_right + 18.0, r1.center().y + 1.0), Align2::LEFT_CENTER, &summary, sans(13.0), TEXT_2, live_rect.left() - title_right - 36.0);
+                widgets::text(&p, pos2(title_right + 18.0, r1.center().y + 1.0), Align2::LEFT_CENTER, &summary, sans(13.0), TEXT_2, cmd_rect.left() - title_right - 36.0);
 
                 // Row 2: search, kind chips ........................ cards / list
                 let y = r1.bottom() + 14.0;
@@ -248,6 +246,8 @@ impl DevDuck {
 
                 let view = self.state.settings.view;
                 let toggle = Rect::from_min_size(pos2(full.right() - 74.0, y + 1.0), vec2(74.0, 32.0));
+                let show_toggle = !self.chip.is_projects();
+                if show_toggle {
                 p.rect_filled(toggle, 9.0, SURFACE);
                 p.rect_stroke(toggle, 9.0, Stroke::new(1.0, BORDER), StrokeKind::Inside);
                 for (i, (mode, icon, tip)) in [(ViewMode::Cards, Icon::Grid, "Cards"), (ViewMode::List, Icon::List, "List")].into_iter().enumerate() {
@@ -265,11 +265,13 @@ impl DevDuck {
                         actions.push(Action::SetView(mode));
                     }
                 }
+                }
 
-                // With the sidebar open these filters live there instead.
-                if !sidebar {
-                    let chip_area = Rect::from_min_max(pos2(search.right() + 16.0, y + 2.0), pos2(toggle.left() - 12.0, y + 32.0));
-                    let views = self.views();
+                // The Ports view's lenses; with the sidebar hidden, Projects joins them.
+                if !sidebar || show_toggle {
+                    let chip_right = if show_toggle { toggle.left() - 12.0 } else { full.right() };
+                    let chip_area = Rect::from_min_max(pos2(search.right() + 16.0, y + 2.0), pos2(chip_right, y + 32.0));
+                    let views: Vec<_> = self.views().into_iter().filter(|v| !sidebar || v.0 != Chip::Projects).collect();
                     ui.scope_builder(UiBuilder::new().max_rect(chip_area).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
                         ui.spacing_mut().item_spacing.x = 4.0;
                         for (chip, _, label, n) in views {
@@ -286,16 +288,17 @@ impl DevDuck {
         p.image(self.logo.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     }
 
-    /// The kind filters: (chip, icon, short label, count).
+    /// The views: (chip, icon, short label, count). Projects first, then the port lenses.
     fn views(&self) -> [(Chip, Icon, &'static str, usize); 5] {
         let count = |k: Kind| self.rows.iter().filter(|r| r.kind == k).count();
         let all = self.rows.iter().filter(|r| r.kind != Kind::System).count();
+        let projects = self.items().len();
         [
-            (Chip::All, Icon::Grid, "All", all),
-            (Chip::Dev, Icon::Code, "Dev", count(Kind::Dev)),
-            (Chip::Docker, Icon::Cube, "Docker", count(Kind::Docker)),
+            (Chip::Projects, Icon::Code, "Projects", projects),
+            (Chip::All, Icon::Grid, if self.state.settings.sidebar { "All" } else { "Ports" }, all),
+            (Chip::Docker, Icon::Cube, "Containers", count(Kind::Docker)),
             (Chip::Apps, Icon::Window, "Apps", count(Kind::App)),
-            (Chip::System, Icon::Shield, "System", count(Kind::System)),
+            (Chip::System, Icon::Shield, "Windows", count(Kind::System)),
         ]
     }
 
@@ -320,13 +323,17 @@ impl DevDuck {
         }
 
         ui.add_space(20.0);
-        self.sidebar_label(ui, "Views", None, actions);
-        let names = ["All listeners", "Dev servers", "Containers", "Apps", "Windows"];
-        for ((chip, icon, _, count), name) in self.views().into_iter().zip(names) {
-            if self.nav_item(ui, icon, name, count, self.chip == chip).clicked() {
-                actions.push(Action::SetChip(chip));
-            }
+        // Two places: your projects, and the raw port view (its lenses are tabs inside it).
+        let [projects, ports, ..] = self.views();
+        if self.nav_item(ui, projects.1, "Projects", projects.3, self.chip.is_projects() && !matches!(self.chip, Chip::Stack(_))).clicked() {
+            actions.push(Action::SetChip(Chip::Projects));
         }
+        if self.nav_item(ui, ports.1, "Ports", ports.3, !self.chip.is_projects()).clicked() && self.chip.is_projects() {
+            actions.push(Action::SetChip(Chip::All));
+        }
+
+        ui.add_space(22.0);
+        self.sidebar_stacks(ui, actions);
 
         ui.add_space(22.0);
         let stopped = self.state.favorites.iter().filter(|f| self.running_row(f).is_none() && !self.favorite_busy(f)).count();
@@ -344,7 +351,7 @@ impl DevDuck {
                 ui.add_space(4.0);
                 ui.add(
                     egui::Label::new(
-                        RichText::new("Star a dev server or container on its card to keep it here. You can start it from the sidebar even after it stops.")
+                        RichText::new("Star a project or container to keep it here, with a Start button when it's stopped.")
                             .font(sans(12.0))
                             .color(TEXT_3),
                     )
@@ -406,7 +413,11 @@ impl DevDuck {
         let id = resp.id;
         let running = self.running_row(f);
         let busy = self.favorite_busy(f) || running.is_some_and(|r| self.busy.contains_key(&r.key));
-        let selected = self.drawer && running.is_some_and(|r| self.selected.as_deref() == Some(r.key.as_str()));
+        let fav_item = match f.kind {
+            FavoriteKind::Project => project_id(&f.target),
+            FavoriteKind::Container => container_id(&f.target),
+        };
+        let selected = self.drawer && self.selected.as_deref() == Some(fav_item.as_str());
         let hovered = ui.rect_contains_pointer(rect);
         let label = format!("{}, {}", f.name, if running.is_some() { "running" } else { "stopped" });
         resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
@@ -432,7 +443,8 @@ impl DevDuck {
         };
         let mut sub = Vec::new();
         if running.is_none() {
-            sub.push("stopped".to_string());
+            let starting = f.kind == FavoriteKind::Project && self.launching.contains_key(&f.target.to_lowercase());
+            sub.push(if starting { "starting" } else { "stopped" }.to_string());
         }
         if let Some(port) = port {
             sub.push(format!(":{port}"));
@@ -460,14 +472,14 @@ impl DevDuck {
         let tip = match (running, f.kind) {
             (Some(_), _) => "Click for details \u{00B7} right-click for more".to_string(),
             (None, FavoriteKind::Container) => "Stopped \u{2014} \u{25B6} runs docker start".to_string(),
-            (None, FavoriteKind::Project) if f.command.is_empty() => "Stopped \u{2014} DevDuck hasn't seen its command yet".to_string(),
-            (None, FavoriteKind::Project) => format!("Stopped \u{2014} \u{25B6} runs {}", f.command),
+            (None, FavoriteKind::Project) => match self.run_spec(&f.target, None) {
+                Ok(spec) => format!("Stopped \u{2014} \u{25B6} runs {}", spec.command),
+                Err(_) => "Stopped \u{2014} DevDuck doesn't know how to start it yet".to_string(),
+            },
         };
         let resp = resp.on_hover_text(tip);
-        if resp.clicked()
-            && let Some(r) = running
-        {
-            actions.push(Action::Select(r.key.clone()));
+        if resp.clicked() {
+            actions.push(Action::Select(fav_item));
         }
         resp.context_menu(|ui| {
             ui.set_min_width(180.0);
@@ -503,27 +515,52 @@ impl DevDuck {
         if self.scanned.is_none() {
             return "Scanning\u{2026}".into();
         }
-        let dev: Vec<&PortApp> = self.rows.iter().filter(|r| r.kind == Kind::Dev).collect();
-        let docker = self.rows.iter().filter(|r| r.kind == Kind::Docker).count();
-        let ports: usize = self.rows.iter().filter(|r| r.kind != Kind::System).map(|r| r.ports.len()).sum();
+        let items = self.items();
+        let running = items.iter().filter(|i| matches!(i.state, super::RunState::Running | super::RunState::Busy(_)) && i.row.is_some()).count();
+        let starting = items.iter().filter(|i| i.state == super::RunState::Starting).count();
+        let crashed = items.iter().filter(|i| matches!(i.state, super::RunState::Exited(c) if c != Some(0))).count();
+        let projects = items.iter().filter(|i| i.is_project()).count();
+        let containers = items.iter().filter(|i| i.is_container()).count();
         let mut parts = Vec::new();
-        if dev.is_empty() && docker == 0 {
-            parts.push("No dev servers running".to_string());
-        } else {
-            if !dev.is_empty() {
-                parts.push(plural(dev.len(), "dev server", "dev servers"));
-            }
-            if docker > 0 {
-                parts.push(plural(docker, "container", "containers"));
-            }
+        parts.push(if running == 0 { "Nothing running".to_string() } else { format!("{running} running") });
+        if starting > 0 {
+            parts.push(format!("{starting} starting"));
         }
-        parts.push(plural(ports, "port", "ports"));
-        let mem: u64 = dev.iter().map(|r| r.mem_bytes).sum();
-        if mem > 0 {
-            let cpu: f32 = dev.iter().filter_map(|r| r.cpu).sum();
-            parts.push(format!("{} \u{00B7} {} CPU in dev", crate::scan::format_mem(mem), cpu_text(Some(cpu))));
+        if crashed > 0 {
+            parts.push(plural(crashed, "crashed", "crashed"));
+        }
+        if self.projects_loading {
+            parts.push("looking for projects\u{2026}".into());
+        } else {
+            parts.push(plural(projects, "project", "projects"));
+            if containers > 0 {
+                parts.push(plural(containers, "container", "containers"));
+            }
         }
         parts.join("  \u{00B7}  ")
+    }
+
+    /// The "Run a command  Ctrl K" button, right-aligned at `right_center`.
+    fn palette_button(&self, ui: &mut Ui, p: &egui::Painter, right_center: Pos2, actions: &mut Vec<Action>) -> Rect {
+        let label = "Run a command";
+        let kw = widgets::text_width(p, "Ctrl K", mono(10.5)) + 12.0;
+        let w = widgets::text_width(p, label, medium(12.5)) + 44.0 + kw;
+        let rect = Rect::from_min_size(pos2(right_center.x - w, right_center.y - 16.0), vec2(w, 32.0));
+        let resp = ui.interact(rect, Id::new("palette-button"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Start, stop or open anything by name");
+        resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+        let hov = ui.ctx().animate_bool_with_time(Id::new("palette-h"), resp.hovered(), 0.12);
+        p.rect_filled(rect, 16.0, mix(SURFACE, SURFACE_2, hov));
+        p.rect_stroke(rect, 16.0, Stroke::new(1.0, mix(BORDER, tint(ACCENT, 0.6), hov)), StrokeKind::Inside);
+        icons::paint(p, Rect::from_center_size(pos2(rect.left() + 17.0, rect.center().y), vec2(13.0, 13.0)), Icon::Command, ACCENT);
+        p.text(pos2(rect.left() + 32.0, rect.center().y), Align2::LEFT_CENTER, label, medium(12.5), TEXT_2);
+        let k = Rect::from_min_size(pos2(rect.right() - 8.0 - kw, rect.center().y - 10.0), vec2(kw, 20.0));
+        p.rect_stroke(k, 6.0, Stroke::new(1.0, BORDER_HI), StrokeKind::Inside);
+        p.text(k.center(), Align2::CENTER_CENTER, "Ctrl K", mono(10.5), TEXT_3);
+        widgets::focus_ring(p, rect, 16.0, &resp);
+        if resp.clicked() {
+            actions.push(Action::OpenPalette);
+        }
+        rect
     }
 
     /// "● Live · 2s" / "❚❚ Paused" toggle, right-aligned at `right_center`.
@@ -567,7 +604,7 @@ impl DevDuck {
             .margin(Margin::ZERO)
             .font(sans(13.5))
             .text_color(TEXT)
-            .hint_text(RichText::new("Search apps, ports, folders").color(TEXT_3).font(sans(13.5)))
+            .hint_text(RichText::new(if self.chip.is_projects() { "Filter projects" } else { "Filter apps, ports, folders" }).color(TEXT_3).font(sans(13.5)))
             .desired_width(inner.width());
         let resp = ui.put(inner, edit);
         if self.focus_search {
@@ -575,10 +612,10 @@ impl DevDuck {
             self.focus_search = false;
         }
         if self.search.is_empty() {
-            let kw = widgets::text_width(p, "Ctrl K", mono(10.5)) + 12.0;
+            let kw = widgets::text_width(p, "Ctrl F", mono(10.5)) + 12.0;
             let k = Rect::from_min_size(pos2(rect.right() - 10.0 - kw, rect.center().y - 10.0), vec2(kw, 20.0));
             p.rect_stroke(k, 6.0, Stroke::new(1.0, BORDER_HI), StrokeKind::Inside);
-            p.text(k.center(), Align2::CENTER_CENTER, "Ctrl K", mono(10.5), TEXT_3);
+            p.text(k.center(), Align2::CENTER_CENTER, "Ctrl F", mono(10.5), TEXT_3);
         } else {
             let x = Rect::from_min_size(pos2(rect.right() - 32.0, rect.center().y - 12.0), vec2(24.0, 24.0));
             if widgets::icon_button(ui, Id::new("clear-search"), x, Icon::Close, "Clear search (Esc)", false, true).clicked() {
@@ -600,21 +637,18 @@ impl DevDuck {
                 self.empty(ui, "Scanning ports\u{2026}", "");
                 return;
             }
+            if v.is_empty() && !searching {
+                self.empty(ui, "Nothing listening here", "");
+                return;
+            }
             if v.is_empty() && searching {
                 self.empty(ui, &format!("Nothing matches \u{201C}{}\u{201D}", self.search.trim()), "Search looks at app names, ports, folders, frameworks and page titles.");
                 return;
             }
 
-            if matches!(self.chip, Chip::All | Chip::Dev) && (!v.dev.is_empty() || !searching) {
+            if self.chip == Chip::All && !v.dev.is_empty() {
                 self.section(ui, "Dev servers", v.dev.len(), Some("double-click to open \u{00B7} Del to stop"));
-                if v.dev.is_empty() {
-                    let hint = if self.state.recent.is_empty() {
-                        "Run npm run dev (or any dev server) and it appears here."
-                    } else {
-                        "Start one from Recently stopped below, or run your dev command as usual."
-                    };
-                    self.placeholder(ui, "No dev servers running", hint);
-                } else if cards {
+                if cards {
                     self.cards(ui, &v.dev, actions);
                 } else {
                     self.rows_list(ui, &v.dev, actions);
@@ -626,12 +660,6 @@ impl DevDuck {
             } else if self.chip == Chip::Docker {
                 self.section(ui, "Containers", 0, None);
                 self.placeholder(ui, "No containers publishing ports", "Ports published by Docker Desktop containers show up here.");
-            }
-            if !v.recent.is_empty() {
-                self.section(ui, "Recently stopped", v.recent.len(), Some("Start re-runs the same command in the same folder"));
-                for e in &v.recent {
-                    self.recent_row(ui, e, actions);
-                }
             }
             if !v.apps.is_empty() {
                 self.section(ui, "Other listeners", v.apps.len(), None);
@@ -645,7 +673,7 @@ impl DevDuck {
         });
     }
 
-    fn section(&self, ui: &mut Ui, title: &str, count: usize, hint: Option<&str>) {
+    pub(super) fn section(&self, ui: &mut Ui, title: &str, count: usize, hint: Option<&str>) {
         ui.add_space(18.0);
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
         let p = ui.painter();
@@ -659,7 +687,7 @@ impl DevDuck {
         ui.add_space(8.0);
     }
 
-    fn placeholder(&self, ui: &mut Ui, title: &str, hint: &str) {
+    pub(super) fn placeholder(&self, ui: &mut Ui, title: &str, hint: &str) {
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 92.0), Sense::hover());
         let p = ui.painter();
         p.rect_filled(rect, 14.0, tint(SURFACE, 0.6));
@@ -673,7 +701,7 @@ impl DevDuck {
         widgets::text(p, rect.center() + vec2(0.0, 13.0), Align2::CENTER_CENTER, hint, sans(12.5), TEXT_3, rect.width() - 40.0);
     }
 
-    fn empty(&self, ui: &mut Ui, title: &str, hint: &str) {
+    pub(super) fn empty(&self, ui: &mut Ui, title: &str, hint: &str) {
         ui.add_space(80.0);
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 60.0), Sense::hover());
         let p = ui.painter();
@@ -703,7 +731,7 @@ impl DevDuck {
         let label = format!("{}, {}, port {}", r.app, r.framework.as_deref().unwrap_or(r.kind.as_str()), r.ports_text);
         resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
         let hovered = ui.rect_contains_pointer(rect);
-        let selected = self.selected.as_deref() == Some(r.key.as_str());
+        let selected = self.drawer && self.selected.as_deref() == Some(row_id(r).as_str());
         let act_ids: Vec<Id> = (0..4).map(|i| id.with(("act", i))).collect();
         let child_focus = ui.memory(|m| m.focused()).is_some_and(|f| act_ids.contains(&f));
         let t = ui.ctx().animate_bool_with_time(id.with("h"), hovered, 0.15);
@@ -875,7 +903,7 @@ impl DevDuck {
         }
     }
 
-    fn status_line(&self, r: &PortApp) -> (String, Option<String>) {
+    pub(super) fn status_line(&self, r: &PortApp) -> (String, Option<String>) {
         match r.kind {
             Kind::Docker => {
                 let main = r.ports.iter().find(|p| p.port == self.main_port(r)).unwrap_or(&r.ports[0]);
@@ -930,7 +958,7 @@ impl DevDuck {
         let id = resp.id;
         resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{}, port {}", r.app, r.ports_text)));
         let hovered = ui.rect_contains_pointer(rect);
-        let selected = self.selected.as_deref() == Some(r.key.as_str());
+        let selected = self.drawer && self.selected.as_deref() == Some(row_id(r).as_str());
         let act_ids: Vec<Id> = (0..4).map(|i| id.with(("act", i))).collect();
         let child_focus = ui.memory(|m| m.focused()).is_some_and(|f| act_ids.contains(&f));
         let t = ui.ctx().animate_bool_with_time(id.with("h"), hovered, 0.12);
@@ -1003,165 +1031,20 @@ impl DevDuck {
         }
     }
 
-    fn recent_row(&self, ui: &mut Ui, e: &Recent, actions: &mut Vec<Action>) {
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
-        let p = ui.painter().clone();
-        let hovered = ui.rect_contains_pointer(rect);
-        p.rect_filled(rect, 10.0, if hovered { tint(SURFACE_HI, 0.8) } else { tint(SURFACE, 0.55) });
-        p.rect_stroke(rect, 10.0, Stroke::new(1.0, tint(BORDER, 0.7)), StrokeKind::Inside);
-        let cy = rect.center().y;
-        widgets::dot(&p, pos2(rect.left() + 18.0, cy), TEXT_3, true);
-        let name = widgets::text(&p, pos2(rect.left() + 34.0, cy), Align2::LEFT_CENTER, &e.app, medium(13.5), TEXT_2, 190.0);
-        let mut x = (rect.left() + 234.0).max(name.right() + 10.0);
-        if let Some(fw) = e.framework.as_deref() {
-            let size = widgets::badge_size(&p, fw);
-            widgets::badge(&p, Rect::from_min_size(pos2(x, cy - 10.0), size), fw, mix(framework_color(fw), TEXT_3, 0.45));
-            x += size.x.max(90.0) + 10.0;
-        } else {
-            x += 100.0;
-        }
-        let ports = e.ports.iter().map(|p| format!(":{p}")).collect::<Vec<_>>().join("  ");
-        let pr = widgets::text(&p, pos2(x, cy), Align2::LEFT_CENTER, &ports, mono(12.5), TEXT_3, 170.0);
-        x = (x + 180.0).max(pr.right() + 12.0);
-
-        let busy_key = format!("start:{}", e.folder);
-        let busy = self.busy.contains_key(&busy_key);
-        let start_label = if busy { "Starting\u{2026}" } else { "Start" };
-        let start_size = widgets::button_size(&p, Some(Icon::Play), start_label);
-        let forget = Rect::from_min_size(pos2(rect.right() - 8.0 - 30.0, cy - 15.0), vec2(30.0, 30.0));
-        let start = Rect::from_min_size(pos2(forget.left() - 8.0 - start_size.x, cy - 16.0), start_size);
-        let star = Rect::from_min_size(pos2(start.left() - 8.0 - 30.0, cy - 15.0), vec2(30.0, 30.0));
-        let fav = self.state.favorites.iter().any(|f| f.kind == FavoriteKind::Project && f.target.eq_ignore_ascii_case(&e.folder));
-        if widgets::star_button(ui, Id::new(("star-recent", &e.folder)), star, fav).clicked() {
-            actions.push(Action::ToggleFavoriteRecent(e.folder.clone()));
-        }
-        let info_right = star.left() - 14.0;
-        if info_right - x > 60.0 {
-            let info = format!("stopped {}  \u{00B7}  {}", store::ago(e.last_seen), widgets::abbreviate_home(&e.folder));
-            widgets::text(&p, pos2(x, cy), Align2::LEFT_CENTER, &info, sans(12.5), TEXT_3, info_right - x);
-        }
-        let can_start = !e.command.is_empty() && !busy;
-        let tip = if e.command.is_empty() { "DevDuck never saw this project's command line".to_string() } else { format!("Runs: {}", e.command) };
-        let resp = widgets::button_at(ui, start, Id::new(("start", &e.folder)), Some(Icon::Play), start_label, Tone::Primary, can_start).on_hover_text(tip);
-        if resp.clicked() {
-            actions.push(Action::Start(e.folder.clone()));
-        }
-        if widgets::icon_button(ui, Id::new(("forget", &e.folder)), forget, Icon::Close, "Forget this project", false, true).clicked() {
-            actions.push(Action::Forget(e.folder.clone()));
-        }
-    }
-
     // -------------------------------------------------------------- drawer --
 
-    fn drawer_panel(&self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        let Some(r) = self.selected.as_ref().and_then(|k| self.row(k)) else { return };
-        egui::Panel::right("drawer")
-            .resizable(true)
-            .default_size(400.0)
-            .size_range(340.0..=620.0)
-            .frame(Frame::new().fill(RAIL).inner_margin(Margin { left: 22, right: 14, top: 18, bottom: 0 }))
-            .show(ui, |ui| {
-                let mut scroll = ScrollArea::vertical().auto_shrink([false, false]);
-                if let Some(offset) = self.shot.as_ref().and_then(|s| s.drawer_scroll) {
-                    scroll = scroll.vertical_scroll_offset(offset);
-                }
-                scroll.show(ui, |ui| {
-                    ui.set_width(ui.available_width() - 8.0);
-                    self.drawer_body(ui, r, actions);
-                    ui.add_space(24.0);
-                });
-            });
-    }
-
-    fn drawer_section(&self, ui: &mut Ui, title: &str) {
+    pub(super) fn drawer_section(&self, ui: &mut Ui, title: &str) {
         ui.add_space(22.0);
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
         widgets::caps(ui.painter(), pos2(rect.left(), rect.center().y), title, TEXT_3);
         ui.add_space(10.0);
     }
 
-    fn drawer_body(&self, ui: &mut Ui, r: &PortApp, actions: &mut Vec<Action>) {
+    /// The Details tab: HTTP status, ports, phone, resources, process tree, command.
+    pub(super) fn details_body(&self, ui: &mut Ui, r: &PortApp, actions: &mut Vec<Action>) {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         let main = self.main_port(r);
         let main_info = r.ports.iter().find(|p| p.port == main).unwrap_or(&r.ports[0]);
-
-        // Title
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::hover());
-        let p = ui.painter().clone();
-        let (dot_color, hollow) = health_color(self.health(r), r.kind);
-        widgets::dot(&p, pos2(rect.left() + 5.0, rect.center().y), dot_color, hollow);
-        widgets::text(&p, pos2(rect.left() + 20.0, rect.center().y), Align2::LEFT_CENTER, &r.app, semibold(19.0), TEXT, rect.width() - 60.0);
-        let close = Rect::from_min_size(pos2(rect.right() - 30.0, rect.center().y - 15.0), vec2(30.0, 30.0));
-        if widgets::icon_button(ui, Id::new("close-drawer"), close, Icon::Close, "Close (Esc)", false, true).clicked() {
-            actions.push(Action::CloseDrawer);
-        }
-        let sub = if r.kind == Kind::Docker { r.docker_image.clone() } else if r.folder.is_empty() { r.process.clone() } else { widgets::abbreviate_home(&r.folder) };
-        ui.add(egui::Label::new(RichText::new(sub).font(mono(12.0)).color(TEXT_3)).truncate());
-
-        // Badges
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            let mut badges: Vec<(String, Color32)> = Vec::new();
-            if let Some(fw) = r.framework.as_deref() {
-                badges.push((fw.to_string(), framework_color(fw)));
-            }
-            badges.push((r.kind.as_str().to_string(), match r.kind { Kind::Dev => GREEN, Kind::Docker => CYAN, Kind::App => VIOLET, Kind::System => TEXT_3 }));
-            if main_info.exposure() != Exposure::Loopback {
-                badges.push(("LAN".into(), AMBER));
-            }
-            if self.launched_log(r).is_some() {
-                badges.push(("started here".into(), ACCENT));
-            }
-            for (text, color) in badges {
-                let size = widgets::badge_size(ui.painter(), &text);
-                let (b, _) = ui.allocate_exact_size(size, Sense::hover());
-                widgets::badge(ui.painter(), b, &text, color);
-            }
-        });
-
-        // Actions
-        ui.add_space(10.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-            let folder = if r.folder.is_empty() { None } else { Some(r.folder.clone()) };
-            if widgets::button(ui, Some(Icon::Open), &format!("Open :{main}"), Tone::Normal, true).clicked() {
-                actions.push(Action::OpenPort(main));
-            }
-            if widgets::button(ui, Some(Icon::Copy), "Copy URL", Tone::Normal, true).clicked() {
-                actions.push(Action::Copy(format!("http://localhost:{main}"), format!("http://localhost:{main}")));
-            }
-            if Self::can_favorite(r) {
-                let fav = self.favorite_of(r).is_some();
-                let (icon, label) = if fav { (Icon::StarFilled, "Favorited") } else { (Icon::Star, "Favorite") };
-                if widgets::button(ui, Some(icon), label, Tone::Normal, true).on_hover_text("Favorites stay in the sidebar, with a Start button when they're stopped").clicked() {
-                    actions.push(Action::ToggleFavorite(r.key.clone()));
-                }
-            }
-            if let Some(f) = &folder {
-                if widgets::button(ui, Some(Icon::Folder), "Folder", Tone::Normal, true).clicked() {
-                    actions.push(Action::Folder(f.clone()));
-                }
-                let editor = self.state.settings.editor;
-                let ok = launch::editor_installed(editor);
-                if widgets::button(ui, Some(Icon::Code), launch::editor_name(editor), Tone::Normal, ok)
-                    .on_hover_text(if ok { "Open the project folder in your editor" } else { "Not installed \u{2014} pick another editor in Settings" })
-                    .clicked()
-                {
-                    actions.push(Action::Editor(f.clone()));
-                }
-                if widgets::button(ui, Some(Icon::Terminal), "Terminal", Tone::Normal, true).clicked() {
-                    actions.push(Action::Terminal(f.clone()));
-                }
-            }
-            let busy = self.busy.contains_key(&r.key);
-            if self.can_restart(r) && widgets::button(ui, Some(Icon::Restart), "Restart", Tone::Normal, !busy).clicked() {
-                actions.push(Action::Restart(r.key.clone()));
-            }
-            let stoppable = r.kind == Kind::Docker || r.kill_pid > 4;
-            if stoppable && widgets::button(ui, Some(Icon::Stop), "Stop", Tone::Danger, !busy).clicked() {
-                actions.push(Action::AskStop(r.key.clone()));
-            }
-        });
 
         // Status
         if r.kind == Kind::Dev {
@@ -1316,43 +1199,15 @@ impl DevDuck {
             });
         }
 
-        // Logs
-        if matches!(r.kind, Kind::Dev | Kind::Docker) {
-            self.drawer_section(ui, "Logs");
-            match self.logs.as_ref().filter(|l| l.key == r.key) {
-                Some(log) => {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(log.source).font(sans(12.0)).color(TEXT_3));
-                        if let Some(path) = &log.path {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.add(egui::Button::new(RichText::new("Open log file").font(medium(12.0)).color(TEXT_2)).fill(SURFACE_2).corner_radius(7)).clicked() {
-                                    actions.push(Action::Folder(path.clone()));
-                                }
-                            });
-                        }
-                    });
-                    // The newest 60 lines; "Open log file" has the rest. (No scroll area nested
-                    // inside the scrolling drawer.)
-                    let lines: Vec<&str> = log.text.trim_end().lines().collect();
-                    let tail = lines[lines.len().saturating_sub(60)..].join("\n");
-                    let text = if tail.trim().is_empty() { "(no output yet)".to_string() } else { tail };
-                    self.code_box(ui, &text);
-                }
-                None if r.kind == Kind::Dev => {
-                    ui.label(
-                        RichText::new("This server was started outside DevDuck, so its output isn't visible here. Restart it from DevDuck to capture its logs.")
-                            .font(sans(12.5))
-                            .color(TEXT_3),
-                    );
-                }
-                None => {
-                    ui.label(RichText::new("Loading\u{2026}").font(sans(12.5)).color(TEXT_3));
-                }
+        if r.kind != Kind::Docker && matches!(r.kind, Kind::Dev) {
+            ui.add_space(4.0);
+            if ui.add(egui::Button::new(RichText::new("Output \u{2192}").font(medium(12.0)).color(ACCENT)).frame(false)).clicked() {
+                actions.push(Action::SetTab(Tab::Output));
             }
         }
     }
 
-    fn code_box(&self, ui: &mut Ui, text: &str) {
+    pub(super) fn code_box(&self, ui: &mut Ui, text: &str) {
         Frame::new().fill(BG).stroke(Stroke::new(1.0, BORDER)).corner_radius(10).inner_margin(Margin::same(12)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.add(egui::Label::new(RichText::new(text).font(mono(11.5)).color(TEXT_2)).wrap().selectable(true));
@@ -1362,7 +1217,23 @@ impl DevDuck {
     // ------------------------------------------------------------- dialogs --
 
     pub(crate) fn dialogs(&mut self, actions: &mut Vec<Action>) {
-        let Some(dialog) = &self.dialog else { return };
+        if self.dialog.is_none() {
+            return;
+        }
+        // Things the dialogs need from `self` while the dialog itself is borrowed.
+        let candidates = if matches!(self.dialog, Some(Dialog::Stack(_))) { self.stack_candidates() } else { Vec::new() };
+        let conflict = match &self.dialog {
+            Some(Dialog::PortConflict { folder, holder, .. }) => {
+                let h = self.row(holder);
+                Some((self.display_name(folder), h.map(|r| r.app.clone()).unwrap_or_else(|| "Something".into()), h.is_some_and(|r| r.kind == Kind::System || (r.kill_pid <= 4 && r.kind != Kind::Docker))))
+            }
+            _ => None,
+        };
+        let roots = self.state.roots();
+        let roots_are_default = self.state.settings.project_roots.is_empty();
+        let project_count = self.projects.len();
+        let projects_loading = self.projects_loading;
+        let Some(dialog) = &mut self.dialog else { return };
         let ctx = self.ctx.clone();
         let mut close = false;
         let frame = Frame::new().fill(SURFACE_HI).stroke(Stroke::new(1.0, BORDER_HI)).corner_radius(14).inner_margin(Margin::same(24));
@@ -1406,10 +1277,15 @@ impl DevDuck {
                         }
                     });
                 }
+                Dialog::PortConflict { folder, script, port, holder, free } => {
+                    let (name, holder_name, system) = conflict.clone().unwrap_or_default();
+                    super::control::conflict_dialog(ui, &name, &holder_name, system, folder, script, *port, holder, *free, actions, &mut close);
+                }
+                Dialog::Stack(draft) => super::control::stack_editor(ui, draft, &candidates, actions, &mut close),
                 Dialog::Error(title, body) => {
                     ui.set_width(440.0);
-                    ui.label(RichText::new(title).font(semibold(17.0)).color(TEXT));
-                    ui.label(RichText::new(body).font(sans(13.0)).color(TEXT_2));
+                    ui.label(RichText::new(title.as_str()).font(semibold(17.0)).color(TEXT));
+                    ui.label(RichText::new(body.as_str()).font(sans(13.0)).color(TEXT_2));
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if widgets::button(ui, None, "OK", Tone::Normal, true).clicked() {
@@ -1450,6 +1326,41 @@ impl DevDuck {
 
                     widgets::toggle(ui, &mut s.probe_http, "Check dev servers over HTTP", "Requests / once per port to show status, latency and the page title");
                     widgets::toggle(ui, &mut s.confirm_stop, "Confirm before stopping", "Ask before ending a process tree or container");
+
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Project folders").font(medium(13.0)).color(TEXT));
+                        let found = if projects_loading { "looking\u{2026}".to_string() } else { plural(project_count, "project found", "projects found") };
+                        ui.label(RichText::new(found).font(sans(12.0)).color(TEXT_3));
+                    });
+                    ui.label(
+                        RichText::new(format!("DevDuck looks {} folders deep for package.json, deno.json and manage.py.", crate::projects::DEPTH))
+                            .font(sans(12.0))
+                            .color(TEXT_3),
+                    );
+                    for root in &roots {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(widgets::abbreviate_home(root)).font(mono(12.0)).color(TEXT_2));
+                            if roots_are_default {
+                                ui.label(RichText::new("(default)").font(sans(11.5)).color(TEXT_3));
+                            }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if roots.len() > 1 && ui.small_button("Remove").clicked() {
+                                    actions.push(Action::RemoveRoot(root.clone()));
+                                }
+                            });
+                        });
+                    }
+                    ui.horizontal(|ui| {
+                        let edit = ui.add(TextEdit::singleline(&mut self.root_input).hint_text(r"Add a folder, e.g. C:\code").font(mono(12.0)).desired_width(300.0));
+                        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                        if (widgets::button(ui, Some(Icon::Plus), "Add folder", Tone::Quiet, !self.root_input.trim().is_empty()).clicked() || enter) && !self.root_input.trim().is_empty() {
+                            actions.push(Action::AddRoot(self.root_input.clone()));
+                        }
+                    });
+                    if widgets::button(ui, Some(Icon::Refresh), "Look again", Tone::Quiet, !projects_loading).clicked() {
+                        actions.push(Action::RescanProjects);
+                    }
 
                     ui.add_space(8.0);
                     let dir = store::data_dir();

@@ -29,6 +29,11 @@ pub enum Icon {
     Cube,
     Window,
     Shield,
+    Layers,
+    Chevron,
+    Plus,
+    Command,
+    Alert,
 }
 
 pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
@@ -148,6 +153,27 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Window => {
             p.rect_stroke(Rect::from_min_max(at(1.5, 2.5), at(14.5, 13.5)), 2.0 * u, stroke, eframe::egui::StrokeKind::Middle);
             line(&[(1.5, 6.0), (14.5, 6.0)]);
+        }
+        Icon::Layers => {
+            line(&[(8.0, 2.0), (14.5, 5.2), (8.0, 8.4), (1.5, 5.2), (8.0, 2.0)]);
+            line(&[(1.5, 8.2), (8.0, 11.4), (14.5, 8.2)]);
+            line(&[(1.5, 11.2), (8.0, 14.4), (14.5, 11.2)]);
+        }
+        Icon::Chevron => {
+            line(&[(4.0, 6.0), (8.0, 10.0), (12.0, 6.0)]);
+        }
+        Icon::Plus => {
+            line(&[(8.0, 3.0), (8.0, 13.0)]);
+            line(&[(3.0, 8.0), (13.0, 8.0)]);
+        }
+        Icon::Command => {
+            line(&[(3.0, 4.5), (6.5, 8.0), (3.0, 11.5)]);
+            line(&[(8.5, 11.5), (13.0, 11.5)]);
+        }
+        Icon::Alert => {
+            line(&[(8.0, 2.0), (14.5, 13.5), (1.5, 13.5), (8.0, 2.0)]);
+            line(&[(8.0, 6.0), (8.0, 9.5)]);
+            p.circle_filled(at(8.0, 11.6), 0.9 * u, color);
         }
         Icon::Shield => {
             line(&[(8.0, 1.8), (13.5, 3.8), (13.5, 8.0), (8.0, 14.2), (2.5, 8.0), (2.5, 3.8), (8.0, 1.8)]);

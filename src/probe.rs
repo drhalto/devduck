@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug)]
 pub enum Probe {
-    Http { status: u16, title: Option<String>, millis: u32, html: bool },
+    /// `location` is a redirect's target, as a path when it stays on this server.
+    Http { status: u16, title: Option<String>, millis: u32, html: bool, location: Option<String> },
     /// Accepted the connection but didn't speak HTTP (databases, sockets, IPC).
     NotHttp,
     /// Didn't answer in time (dev servers compiling their first page do this).
@@ -77,7 +78,27 @@ fn parse(buf: &[u8], millis: u32) -> Probe {
         l.starts_with("content-type:") && l.contains("html")
     });
     let title = if html { extract_title(body) } else { None };
-    Probe::Http { status, title, millis, html }
+    let location = (300..400).contains(&status).then(|| header(head, "location")).flatten().map(|l| local_path(&l));
+    Probe::Http { status, title, millis, html, location }
+}
+
+fn header(head: &str, name: &str) -> Option<String> {
+    head.lines().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_string()).filter(|v| !v.is_empty())
+    })
+}
+
+/// "http://localhost:3000/login?next=/" -> "/login?next=/"; other hosts stay whole.
+fn local_path(loc: &str) -> String {
+    for scheme in ["http://", "https://"] {
+        if let Some(rest) = loc.strip_prefix(scheme) {
+            let (host, path) = rest.split_once('/').map_or((rest, "/".to_string()), |(h, p)| (h, format!("/{p}")));
+            let host = host.split(':').next().unwrap_or_default();
+            return if matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "0.0.0.0") { path } else { loc.to_string() };
+        }
+    }
+    loc.to_string()
 }
 
 fn contains_ignore_case(hay: &[u8], needle: &[u8]) -> bool {
@@ -113,7 +134,7 @@ mod tests {
     fn parses_status_and_title() {
         let resp = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><head><title>\n  Rough &amp; Ready\n</title></head>";
         match parse(resp, 12) {
-            Probe::Http { status, title, millis, html } => {
+            Probe::Http { status, title, millis, html, .. } => {
                 assert_eq!((status, millis, html), (200, 12, true));
                 assert_eq!(title.as_deref(), Some("Rough & Ready"));
             }
@@ -125,5 +146,17 @@ mod tests {
     fn json_and_non_http() {
         assert!(matches!(parse(b"HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{}", 1), Probe::Http { status: 404, title: None, .. }));
         assert!(matches!(parse(b"SSH-2.0-OpenSSH_for_Windows_9.5\r\n", 1), Probe::NotHttp));
+    }
+
+    #[test]
+    fn redirects_keep_their_target() {
+        let got = |raw: &[u8]| match parse(raw, 1) {
+            Probe::Http { location, .. } => location,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(got(b"HTTP/1.1 307 Temporary Redirect\r\nlocation: /login\r\n\r\n").as_deref(), Some("/login"));
+        assert_eq!(got(b"HTTP/1.1 302 Found\r\nLocation: http://localhost:3009/auth/sign-in\r\n\r\n").as_deref(), Some("/auth/sign-in"));
+        assert_eq!(got(b"HTTP/1.1 302 Found\r\nLocation: https://login.example.com/x\r\n\r\n").as_deref(), Some("https://login.example.com/x"));
+        assert_eq!(got(b"HTTP/1.1 200 OK\r\nLocation: /ignored\r\n\r\n"), None);
     }
 }

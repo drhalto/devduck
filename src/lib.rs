@@ -7,6 +7,8 @@ pub mod gui;
 pub mod icon;
 pub mod launch;
 pub mod probe;
+pub mod git;
+pub mod projects;
 pub mod scan;
 pub mod store;
 pub mod win;
